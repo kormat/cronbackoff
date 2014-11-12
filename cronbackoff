@@ -5,11 +5,11 @@ NAME="${NAME:-$(basename "$1")}"
 
 # If $DEBUG is already set, use that. Otherwise set $DEBUG to the empty string
 DEBUG=${DEBUG:-}
-PROG="cronbackoff"
+PROG="$(basename "$0")"
 STATEDIR="/tmp/$PROG"
 STATEFILE="$STATEDIR/$NAME"
-BASE_DELAY=$((60 * 60)) # 1h mins
-MAX_DELAY=$((60 * 60 * 24)) # 1 day
+BASE_DELAY=$((60 * 60)) # 1h
+MAX_DELAY=$((60 * 60 * 24)) # 1d
 EXPONENT=4
 
 function lock() {
