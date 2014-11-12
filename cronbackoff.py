@@ -1,16 +1,31 @@
 #!/usr/bin/python
 
 import argparse
-import os
+import errno
 import fcntl
+import logging
+import os
+import stat
+import sys
 import tempfile
 
 PROG = "cronbackoff"
 opts = None
+logger = None
 
 def main():
+  setupLogging()
   parseArgs()
+  mkStateDir()
   getLock()
+
+def setupLogging():
+  global logger
+  logging.basicConfig(
+      format='%(asctime)s %(name)s(%(levelname)s): %(message)s',
+      datefmt="%Y-%m-%d %H:%M:%S")
+  logger = logging.getLogger()
+  logger.name = PROG
 
 def parseArgs():
   global opts
@@ -30,10 +45,44 @@ def parseArgs():
   opts = parser.parse_args()
 
   if opts.debug:
-    print "Options:", opts
+    logger.setLevel(logging.DEBUG)
+
+  logger.info("Options: %s", opts)
+
+def mkStateDir():
+  # Try to make directory. If that fails, check the existing file.
+  created = True
+  try:
+    os.mkdir(opts.state_dir, 0700)
+  except OSError as e:
+    if e.errno == errno.EEXIST:
+      logging.debug("State dir (%s) already exists" % opts.state_dir)
+      created = False
+    else:
+      raise
+  else:
+    logging.debug("State dir (%s) created" % opts.state_dir)
+    return
+
+  st = os.lstat(opts.state_dir)
+  errs = []
+  if not stat.S_ISDIR(st.st_mode):
+    errs.append("not a directory")
+  if stat.S_ISLNK(st.st_mode):
+    errs.append("a symlink")
+  if st.st_uid != os.getuid():
+    errs.append("not owned by current user")
+  if st.st_gid != os.getgid():
+    errs.append("not owned by current group")
+  if errs:
+    logging.error("State dir (%s) is: %s" % (opts.state_dir, ", ".join(errs)))
+    sys.exit(1)
+
+
+def debug(s):
+  print "%s(DEBUG):"
 
 def getLock():
-
   pass
 
 if __name__ == '__main__':
