@@ -1,0 +1,105 @@
+#!/bin/bash
+
+# If $NAME var is already set, use that. Otherwise, use the basename of our first argument.
+NAME="${NAME:-$(basename "$1")}"
+
+# If $DEBUG is already set, use that. Otherwise set $DEBUG to the empty string
+DEBUG=${DEBUG:-}
+PROG="cronbackoff"
+STATEDIR="/tmp/$PROG"
+STATEFILE="$STATEDIR/$NAME"
+BASE_DELAY=$((60 * 60)) # 1h mins
+MAX_DELAY=$((60 * 60 * 24)) # 1 day
+EXPONENT=4
+
+function lock() {
+  # Setup locking
+  local LOCK_FILE="/var/run/lock/$PROG-$NAME.lock"
+
+  debug "trying to lock $LOCK_FILE"
+  (set -C; echo "$$" > $LOCK_FILE) 2> /dev/null
+  if [ $? != "0" ]; then
+    debug "lock failure"
+    echo "$PROG: Lock File ($LOCK_FILE) exists, exiting. Lock held by pid $(<$LOCK_FILE):"
+    ps $(<$LOCK_FILE)
+    exit 1
+  fi
+  debug "lock success"
+
+  trap "rm $LOCK_FILE; exit" EXIT
+}
+
+function mkstatedir() {
+  if ! [ -d "$STATEDIR" ]; then
+    debug "no state dir ($STATEDIR), creating"
+    mkdir -m 700 "$STATEDIR"
+  fi
+}
+
+function backoff() {
+  # Return 0 (true) if we should backoff
+  # Return 1 (false) if we should execute
+
+  if ! [ -e "$STATEFILE" ]; then
+    # No existing state, just execute
+    debug "no existing state file ($STATEFILE), no backoff"
+    lastDelay=0
+    nextDelay=$BASE_DELAY
+    return 1
+  fi
+
+  local lastRun=$(date +%s -r "$STATEFILE")
+  lastDelay=$(<"$STATEFILE")
+  local backoffUntil=$((lastRun + lastDelay))
+  local now=$(date +%s)
+
+  if [ "$lastDelay" -eq 0 ]; then
+    nextDelay="$BASE_DELAY"
+  else
+    nextDelay=$((lastDelay * EXPONENT))
+  fi
+  if [ $nextDelay -gt $MAX_DELAY ]; then
+    nextDelay=$MAX_DELAY
+  fi
+
+  debug "last delay: $(($lastDelay/60)) mins"
+  debug "next delay: $(($nextDelay/60)) mins"
+  debug "last run:      $(date -u -d @$lastRun)"
+  debug "backoff until: $(date -u -d @$backoffUntil)"
+  debug "now:           $(date -u -d @$now)"
+
+  if [ $((backoffUntil)) -gt $now ]; then
+    debug "still in backoff"
+    return 0
+  else
+    debug "not in backoff, execute"
+    return 1
+  fi
+}
+
+function debug() {
+  if [ -n "$DEBUG" ]; then
+    echo "$(date -u) $PROG(DEBUG): $@" >&2
+  fi
+}
+
+lock
+mkstatedir
+
+if backoff; then
+  exit
+fi
+
+# Finally, execute
+"$@"
+ret=$?
+
+if [ $ret -eq 0 ]; then
+  # all clear
+  debug "script exited cleanly, no backoff needed"
+  echo 0 > $STATEFILE
+else
+  echo "$PROG(ERROR): script exited uncleanly ($ret), backoff for $((nextDelay/60)) mins from $(date -u)" >&2
+  echo "$nextDelay" > $STATEFILE
+fi
+exit $ret
