@@ -5,6 +5,7 @@ import errno
 import fcntl
 import logging
 import os
+import pwd
 import stat
 import sys
 import tempfile
@@ -12,6 +13,8 @@ import tempfile
 PROG = "cronbackoff"
 opts = None
 logger = None
+stateFile = None
+user = pwd.getpwuid(os.getuid())[0]
 
 def main():
   setupLogging()
@@ -37,12 +40,16 @@ def parseArgs():
       help="Maximum time (in minutes) to skip execution (Default: %(default)s mins)")
   parser.add_argument("-e", "--exponent", default=4, type=float,
       help="How much to multiply the previous delay upon another failure (Default: %(default)sx)")
-  parser.add_argument("-d", "--debug", action='store_true', help="Debugging output")
-  parser.add_argument("--state-dir", default=os.path.join(tempfile.gettempdir(), PROG),
+  parser.add_argument("-d", "--debug", action='store_true', help="Enable debugging output")
+  parser.add_argument("-n", "--name", default=None, help="Name of state file. Defaults to name of command")
+  parser.add_argument("--state-dir", default=os.path.join(tempfile.gettempdir(), "%s-%s" % (PROG, user)),
       help="Directory to store state in (Default: %(default)s)")
-  parser.add_argument("command", nargs=argparse.REMAINDER,
+  parser.add_argument("command", nargs="+",
       help="Command to run")
   opts = parser.parse_args()
+
+  if opts.name is None:
+    opts.name = os.path.basename(opts.command[0])
 
   if opts.debug:
     logger.setLevel(logging.DEBUG)
@@ -75,12 +82,8 @@ def mkStateDir():
   if st.st_gid != os.getgid():
     errs.append("not owned by current group")
   if errs:
-    logging.error("State dir (%s) is: %s" % (opts.state_dir, ", ".join(errs)))
+    logging.critical("State dir (%s) is: %s" % (opts.state_dir, ", ".join(errs)))
     sys.exit(1)
-
-
-def debug(s):
-  print "%s(DEBUG):"
 
 def getLock():
   pass
