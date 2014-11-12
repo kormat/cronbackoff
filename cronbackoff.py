@@ -8,6 +8,7 @@ import os
 import pwd
 import stat
 import sys
+import time
 import tempfile
 
 PROG = "cronbackoff"
@@ -15,12 +16,15 @@ opts = None
 logger = None
 stateFile = None
 user = pwd.getpwuid(os.getuid())[0]
+lastRun = None
+lastDelay = None
 
 def main():
   setupLogging()
   parseArgs()
   mkStateDir()
   getLock()
+  readState()
 
 def setupLogging():
   global logger
@@ -83,10 +87,53 @@ def mkStateDir():
     errs.append("not owned by current group")
   if errs:
     logging.critical("State dir (%s) is: %s" % (opts.state_dir, ", ".join(errs)))
+    logging.critical("Exiting")
     sys.exit(1)
 
 def getLock():
-  pass
+  global stateFile
+  path = os.path.join(opts.state_dir, opts.name)
+  logging.debug("Opening state file (%s)" % path)
+  try:
+    stateFile = open(path, 'r+')
+  except IOError as e:
+    logging.critical("Unable to open state file (%s):" % path)
+    raise
+
+  logging.debug("Locking state file")
+  try:
+    fcntl.lockf(stateFile.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+  except IOError as e:
+    if e.errno in [errno.EACCES, errno.EAGAIN]:
+      logging.critical("State file (%s) already locked" % path)
+      logging.critical("Exiting")
+      sys.exit(1)
+    else:
+      logging.critical("Unable to lock state file (%s):" % path)
+      raise
+  logging.debug("State file opened & locked")
+
+def readState():
+  global lastRun, lastDelay
+  logging.debug("Stating state file")
+  st = os.fstat(stateFile.fileno())
+  lastRun = st.st_mtime
+  now = time.time()
+  logging.info("Last run finished: %s (%s ago)", time.ctime(lastRun), formatTime(now - lastRun))
+
+def formatTime(seconds):
+  out = []
+  m, s = divmod(seconds, 60)
+  h, m = divmod(m, 60)
+  if h:
+    out.append("%dh" % h)
+  if m:
+    out.append("%dm" % m)
+  if s:
+    out.append("%ds" % round(s))
+  if not out:
+    out.append("0s")
+  return " ".join(out)
 
 if __name__ == '__main__':
   main()
