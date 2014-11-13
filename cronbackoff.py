@@ -33,7 +33,8 @@ def main():
   getLock()
   readState()
   backoff()
-  execute()
+  success = execute()
+  saveState(success)
 
 def setupLogging():
   global logger
@@ -77,12 +78,12 @@ def mkStateDir():
     os.mkdir(opts.state_dir, 0700)
   except OSError as e:
     if e.errno == errno.EEXIST:
-      logging.debug("State dir (%s) already exists" % opts.state_dir)
+      logger.debug("State dir (%s) already exists" % opts.state_dir)
       created = False
     else:
       raise
   else:
-    logging.debug("State dir (%s) created" % opts.state_dir)
+    logger.debug("State dir (%s) created" % opts.state_dir)
     return
 
   st = os.lstat(opts.state_dir)
@@ -96,72 +97,72 @@ def mkStateDir():
   if st.st_gid != os.getgid():
     errs.append("not owned by current group")
   if errs:
-    logging.critical("State dir (%s) is: %s" % (opts.state_dir, ", ".join(errs)))
-    logging.critical("Exiting")
+    logger.critical("State dir (%s) is: %s" % (opts.state_dir, ", ".join(errs)))
+    logger.critical("Exiting")
     sys.exit(1)
 
 def getLock():
   global stateFile, stateExists
   path = os.path.join(opts.state_dir, opts.name)
-  logging.debug("Opening state file (%s)" % path)
+  logger.debug("Opening state file (%s)" % path)
 
   try:
     stateFile = open(path, 'r+')
   except IOError as e:
     if e.errno == errno.ENOENT:
       stateExists = False
-      logging.debug("State file doesn't exist")
+      logger.debug("State file doesn't exist")
     else:
-      logging.critical("Unable to open state file (%s):" % path)
+      logger.critical("Unable to open state file (%s):" % path)
       raise
 
   if not stateExists:
-    logging.debug("Creating new state file")
+    logger.debug("Creating new state file")
     try:
       stateFile = open(path, 'w+')
     except IOError as e:
-      logging.critical("Unable to create state file (%s):" % path)
+      logger.critical("Unable to create state file (%s):" % path)
       raise
 
-  logging.debug("Locking state file")
+  logger.debug("Locking state file")
   try:
     fcntl.lockf(stateFile.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
   except IOError as e:
     if e.errno in [errno.EACCES, errno.EAGAIN]:
-      logging.critical("State file (%s) already locked" % path)
-      logging.critical("Exiting")
+      logger.critical("State file (%s) already locked" % path)
+      logger.critical("Exiting")
       sys.exit(1)
     else:
-      logging.critical("Unable to lock state file (%s):" % path)
+      logger.critical("Unable to lock state file (%s):" % path)
       raise
-  logging.debug("State file opened & locked")
+  logger.debug("State file opened & locked")
 
 def readState():
   global lastRun, lastDelay, nextRun
 
   if not stateExists:
-    logging.info("No existing state")
+    logger.info("No existing state")
     return
 
-  logging.debug("Stating state file")
+  logger.debug("Stating state file")
   st = os.fstat(stateFile.fileno())
   lastRun = st.st_mtime
-  logging.info("Last run finished: %s (%s ago)", time.ctime(lastRun), formatTime(now - lastRun))
+  logger.info("Last run finished: %s (%s ago)", time.ctime(lastRun), formatTime(now - lastRun))
 
   contents = stateFile.read()
-  logging.debug("State file contents: %r", contents)
+  logger.debug("State file contents: %r", contents)
 
   try:
     lastDelay = int(contents)
   except ValueError:
-    logging.critical("Corrupt state file - %r is not a valid integer", contents)
-    logging.critical("Exiting")
+    logger.critical("Corrupt state file - %r is not a valid integer", contents)
+    logger.critical("Exiting")
     sys.exit(1)
   nextRun = lastRun + (lastDelay * 60)
   if lastDelay == 0:
-    logging.info("No previous backoff")
+    logger.info("No previous backoff")
   else:
-    logging.info("Last backoff (%s) was until %s",
+    logger.info("Last backoff (%s) was until %s",
         formatTime(lastDelay * 60, precision="minutes"),
         time.ctime(nextRun))
 
@@ -186,43 +187,61 @@ def formatTime(seconds, precision="seconds"):
 
 def backoff():
   if not stateExists:
-    logging.info("No existing state, execute command")
+    logger.info("No existing state, execute command")
     return
   if lastDelay == 0:
-    logging.info("Not in backoff, execute command")
+    logger.info("Not in backoff, execute command")
     return
   if nextRun > now:
-    logging.info("Still in backoff for another %s, skipping execution.", formatTime(nextRun - now))
-    logging.info("Exiting")
+    logger.info("Still in backoff for another %s, skipping execution.", formatTime(nextRun - now))
+    logger.info("Exiting")
     exit(0)
-  logging.info("No longer in backoff, execute command")
+  logger.info("No longer in backoff, execute command")
 
 def execute():
-  logging.info("About to execute command: %s", " ".join(opts.command))
-  logging.debug("Raw command: %r", opts.command)
+  logger.info("About to execute command: %s", " ".join(opts.command))
+  logger.debug("Raw command: %r", opts.command)
   success = True
   try:
     output = subprocess.check_output(opts.command, stderr=subprocess.STDOUT)
   except subprocess.CalledProcessError as e:
-    logging.error("Command exited with non-zero return status: %d", e.returncode)
-    logging.info("Command output:")
+    logger.warning("Command exited with non-zero return status: %d", e.returncode)
+    logger.info("Command output:")
     for line in e.output.splitlines():
-      logging.info("    %s", line)
+      logger.info("    %s", line)
     success = False
   except OSError as e:
-    if e.errno == errno.ENOENT:
-      logging.critical("Command (%s) not found", opts.command[0])
-      logging.critical("Exiting")
-      exit(1)
-    else:
-      raise
+    logger.critical("Error running command: %s", e.strerror)
+    logger.critical("Exiting")
+    exit(1)
   else:
-    logging.info("Command exited cleanly")
-    logging.debug("Command output:")
+    logger.info("Command exited cleanly")
+    logger.debug("Command output:")
     for line in output.splitlines():
-      logging.debug(line)
+      logger.debug("    %s", line)
 
+  return success
 
+def saveState(success):
+  if success:
+    logger.info("Execution successful, no backoff")
+    nextDelay = 0
+  else:
+    if not lastDelay: # Works if lastDelay was 0, or is unset due to no preexisting state
+      nextDelay = opts.base_delay
+    else:
+      nextDelay = min(lastDelay * opts.exponent, opts.max_delay)
+
+  stateFile.seek(0)
+  stateFile.truncate(0)
+  stateFile.write("%d\n" % nextDelay)
+  stateFile.flush()
+  st = os.fstat(stateFile.fileno())
+  fcntl.lockf(stateFile.fileno(), fcntl.LOCK_UN)
+  stateFile.close()
+
+  if nextDelay:
+    logger.warning("Execution unclean, backoff delay is %s (until %s)", formatTime(nextDelay * 60), time.ctime(st.st_mtime + nextDelay * 60))
 
 if __name__ == '__main__':
   main()
