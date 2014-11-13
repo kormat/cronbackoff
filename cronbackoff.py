@@ -12,19 +12,24 @@ import time
 import tempfile
 
 PROG = "cronbackoff"
+now = None
 opts = None
 logger = None
 stateFile = None
 user = pwd.getpwuid(os.getuid())[0]
 lastRun = None
 lastDelay = None
+nextRun = None
 
 def main():
+  global now
+  now = time.time()
   setupLogging()
   parseArgs()
   mkStateDir()
   getLock()
   readState()
+  backoff()
 
 def setupLogging():
   global logger
@@ -114,11 +119,10 @@ def getLock():
   logging.debug("State file opened & locked")
 
 def readState():
-  global lastRun, lastDelay
+  global lastRun, lastDelay, nextRun
   logging.debug("Stating state file")
   st = os.fstat(stateFile.fileno())
   lastRun = st.st_mtime
-  now = time.time()
   logging.info("Last run finished: %s (%s ago)", time.ctime(lastRun), formatTime(now - lastRun))
 
   contents = stateFile.read()
@@ -130,7 +134,13 @@ def readState():
     logging.critical("Corrupt state file - %r is not a valid integer", contents)
     logging.critical("Exiting")
     sys.exit(1)
-  logging.info("Last delay: %s", formatTime(lastDelay * 60, precision="minutes"))
+  nextRun = lastRun + (lastDelay * 60)
+  if lastDelay == 0:
+    logging.info("No previous backoff")
+  else:
+    logging.info("Last backoff (%s) was until %s",
+        formatTime(lastDelay * 60, precision="minutes"),
+        time.ctime(nextRun))
 
 def formatTime(seconds, precision="seconds"):
   out = []
@@ -150,6 +160,16 @@ def formatTime(seconds, precision="seconds"):
     elif precision == "seconds":
       out.append("0s")
   return " ".join(out)
+
+def backoff():
+  if lastDelay == 0:
+    logging.info("Not in backoff, execute command")
+    return
+  if nextRun > now:
+    logging.info("Still in backoff for another %s, skipping execution.", formatTime(nextRun - now))
+    logging.info("Exiting")
+    exit(0)
+  logging.info("No longer in backoff, executing command")
 
 if __name__ == '__main__':
   main()
