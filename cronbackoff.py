@@ -6,6 +6,7 @@ import fcntl
 import logging
 import os
 import pwd
+import subprocess
 import stat
 import sys
 import time
@@ -16,10 +17,12 @@ now = None
 opts = None
 logger = None
 stateFile = None
+stateExists = True
 user = pwd.getpwuid(os.getuid())[0]
 lastRun = None
 lastDelay = None
 nextRun = None
+nextDelay = 0
 
 def main():
   global now
@@ -30,6 +33,7 @@ def main():
   getLock()
   readState()
   backoff()
+  execute()
 
 def setupLogging():
   global logger
@@ -59,6 +63,7 @@ def parseArgs():
 
   if opts.name is None:
     opts.name = os.path.basename(opts.command[0])
+  opts.state_dir = os.path.expanduser(opts.state_dir)
 
   if opts.debug:
     logger.setLevel(logging.DEBUG)
@@ -96,14 +101,27 @@ def mkStateDir():
     sys.exit(1)
 
 def getLock():
-  global stateFile
+  global stateFile, stateExists
   path = os.path.join(opts.state_dir, opts.name)
   logging.debug("Opening state file (%s)" % path)
+
   try:
     stateFile = open(path, 'r+')
   except IOError as e:
-    logging.critical("Unable to open state file (%s):" % path)
-    raise
+    if e.errno == errno.ENOENT:
+      stateExists = False
+      logging.debug("State file doesn't exist")
+    else:
+      logging.critical("Unable to open state file (%s):" % path)
+      raise
+
+  if not stateExists:
+    logging.debug("Creating new state file")
+    try:
+      stateFile = open(path, 'w+')
+    except IOError as e:
+      logging.critical("Unable to create state file (%s):" % path)
+      raise
 
   logging.debug("Locking state file")
   try:
@@ -120,6 +138,11 @@ def getLock():
 
 def readState():
   global lastRun, lastDelay, nextRun
+
+  if not stateExists:
+    logging.info("No existing state")
+    return
+
   logging.debug("Stating state file")
   st = os.fstat(stateFile.fileno())
   lastRun = st.st_mtime
@@ -162,6 +185,9 @@ def formatTime(seconds, precision="seconds"):
   return " ".join(out)
 
 def backoff():
+  if not stateExists:
+    logging.info("No existing state, execute command")
+    return
   if lastDelay == 0:
     logging.info("Not in backoff, execute command")
     return
@@ -169,7 +195,34 @@ def backoff():
     logging.info("Still in backoff for another %s, skipping execution.", formatTime(nextRun - now))
     logging.info("Exiting")
     exit(0)
-  logging.info("No longer in backoff, executing command")
+  logging.info("No longer in backoff, execute command")
+
+def execute():
+  logging.info("About to execute command: %s", " ".join(opts.command))
+  logging.debug("Raw command: %r", opts.command)
+  success = True
+  try:
+    output = subprocess.check_output(opts.command, stderr=subprocess.STDOUT)
+  except subprocess.CalledProcessError as e:
+    logging.error("Command exited with non-zero return status: %d", e.returncode)
+    logging.info("Command output:")
+    for line in e.output.splitlines():
+      logging.info("    %s", line)
+    success = False
+  except OSError as e:
+    if e.errno == errno.ENOENT:
+      logging.critical("Command (%s) not found", opts.command[0])
+      logging.critical("Exiting")
+      exit(1)
+    else:
+      raise
+  else:
+    logging.info("Command exited cleanly")
+    logging.debug("Command output:")
+    for line in output.splitlines():
+      logging.debug(line)
+
+
 
 if __name__ == '__main__':
   main()
