@@ -35,6 +35,7 @@ def main():
   backoff()
   success = execute()
   saveState(success)
+  cleanupExit(0)
 
 def setupLogging():
   global logger
@@ -81,7 +82,8 @@ def mkStateDir():
       logger.debug("State dir (%s) already exists" % opts.state_dir)
       created = False
     else:
-      raise
+      logging.critical("Unable to make state dir: %s", e.strerror)
+      cleanupExit(1)
   else:
     logger.debug("State dir (%s) created" % opts.state_dir)
     return
@@ -98,8 +100,7 @@ def mkStateDir():
     errs.append("not owned by current group")
   if errs:
     logger.critical("State dir (%s) is: %s" % (opts.state_dir, ", ".join(errs)))
-    logger.critical("Exiting")
-    sys.exit(1)
+    cleanupExit(1)
 
 def getLock():
   global stateFile, stateExists
@@ -239,9 +240,25 @@ def saveState(success):
   st = os.fstat(stateFile.fileno())
   fcntl.lockf(stateFile.fileno(), fcntl.LOCK_UN)
   stateFile.close()
+  stateFile = None
 
   if nextDelay:
     logger.warning("Execution unclean, backoff delay is %s (until %s)", formatTime(nextDelay * 60), time.ctime(st.st_mtime + nextDelay * 60))
+
+def cleanupExit(status):
+  if not stateExists and stateFile:
+    # If there wasn't an existing state file, and it hasn't been closed already,
+    # that means we've created an empty one, so unlink it.
+    os.unlink(stateFile.name)
+    fcntl.lockf(stateFile.fileno(), fcntl.LOCK_UN)
+    stateFile.close()
+
+  if status == 0:
+    logging.debug("Exiting (%d)", exit)
+  else:
+    logging.critical("Exiting (%d)", exit)
+
+  sys.exit(exit)
 
 if __name__ == '__main__':
   main()
