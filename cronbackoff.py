@@ -13,7 +13,6 @@ import time
 import tempfile
 
 PROG = "cronbackoff"
-now = None
 opts = None
 logger = None
 stateFile = None
@@ -25,8 +24,6 @@ nextRun = None
 nextDelay = 0
 
 def main():
-  global now
-  now = time.time()
   setupLogging()
   parseArgs()
   mkStateDir()
@@ -73,20 +70,16 @@ def parseArgs():
   logger.info("Options: %s", opts)
 
 def mkStateDir():
-  # Try to make directory. If that fails, check the existing file.
-  created = True
   try:
     os.mkdir(opts.state_dir, 0700)
   except OSError as e:
     if e.errno == errno.EEXIST:
-      logger.debug("State dir (%s) already exists" % opts.state_dir)
-      created = False
+      logger.debug("State dir (%s) already exists", opts.state_dir)
     else:
       logging.critical("Unable to make state dir: %s", e.strerror)
       cleanupExit(1)
   else:
-    logger.debug("State dir (%s) created" % opts.state_dir)
-    return
+    logger.debug("State dir (%s) created", opts.state_dir)
 
   st = os.lstat(opts.state_dir)
   errs = []
@@ -99,13 +92,13 @@ def mkStateDir():
   if st.st_gid != os.getgid():
     errs.append("not owned by current group")
   if errs:
-    logger.critical("State dir (%s) is: %s" % (opts.state_dir, ", ".join(errs)))
+    logger.critical("State dir (%s) is: %s", opts.state_dir, ", ".join(errs))
     cleanupExit(1)
 
 def getLock():
   global stateFile, stateExists
   path = os.path.join(opts.state_dir, opts.name)
-  logger.debug("Opening state file (%s)" % path)
+  logger.debug("Opening state file (%s)", path)
 
   try:
     stateFile = open(path, 'r+')
@@ -114,28 +107,26 @@ def getLock():
       stateExists = False
       logger.debug("State file doesn't exist")
     else:
-      logger.critical("Unable to open state file (%s):" % path)
-      raise
+      logger.critical("Unable to open state file (%s): %s", path, e.strerror)
+      cleanupExit(1)
 
   if not stateExists:
     logger.debug("Creating new state file")
     try:
       stateFile = open(path, 'w+')
     except IOError as e:
-      logger.critical("Unable to create state file (%s):" % path)
-      raise
+      logger.critical("Unable to create state file (%s): %s", path, e.strerror)
+      cleanupExit(1)
 
   logger.debug("Locking state file")
   try:
     fcntl.lockf(stateFile.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
   except IOError as e:
     if e.errno in [errno.EACCES, errno.EAGAIN]:
-      logger.critical("State file (%s) already locked" % path)
-      logger.critical("Exiting")
-      sys.exit(1)
+      logger.critical("State file (%s) already locked", path)
     else:
-      logger.critical("Unable to lock state file (%s):" % path)
-      raise
+      logger.critical("Unable to lock state file (%s): %s", path, e.strerror)
+    cleanupExit(1)
   logger.debug("State file opened & locked")
 
 def readState():
@@ -145,10 +136,10 @@ def readState():
     logger.info("No existing state")
     return
 
-  logger.debug("Stating state file")
+  logger.debug("Stat'ing state file")
   st = os.fstat(stateFile.fileno())
   lastRun = st.st_mtime
-  logger.info("Last run finished: %s (%s ago)", time.ctime(lastRun), formatTime(now - lastRun))
+  logger.info("Last run finished: %s (%s ago)", time.ctime(lastRun), formatTime(time.time() - lastRun))
 
   contents = stateFile.read()
   logger.debug("State file contents: %r", contents)
@@ -157,8 +148,7 @@ def readState():
     lastDelay = int(contents)
   except ValueError:
     logger.critical("Corrupt state file - %r is not a valid integer", contents)
-    logger.critical("Exiting")
-    sys.exit(1)
+    cleanupExit(1)
   nextRun = lastRun + (lastDelay * 60)
   if lastDelay == 0:
     logger.info("No previous backoff")
@@ -193,10 +183,9 @@ def backoff():
   if lastDelay == 0:
     logger.info("Not in backoff, execute command")
     return
-  if nextRun > now:
+  if nextRun > time.time():
     logger.info("Still in backoff for another %s, skipping execution.", formatTime(nextRun - now))
-    logger.info("Exiting")
-    exit(0)
+    cleanupExit(0)
   logger.info("No longer in backoff, execute command")
 
 def execute():
@@ -213,8 +202,7 @@ def execute():
     success = False
   except OSError as e:
     logger.critical("Error running command: %s", e.strerror)
-    logger.critical("Exiting")
-    exit(1)
+    cleanupExit(1)
   else:
     logger.info("Command exited cleanly")
     logger.debug("Command output:")
