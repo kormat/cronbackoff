@@ -121,18 +121,34 @@ def readState():
   now = time.time()
   logging.info("Last run finished: %s (%s ago)", time.ctime(lastRun), formatTime(now - lastRun))
 
-def formatTime(seconds):
+  contents = stateFile.read()
+  logging.debug("State file contents: %r", contents)
+
+  try:
+    lastDelay = int(contents)
+  except ValueError:
+    logging.critical("Corrupt state file - %r is not a valid integer", contents)
+    logging.critical("Exiting")
+    sys.exit(1)
+  logging.info("Last delay: %s", formatTime(lastDelay * 60, precision="minutes"))
+
+def formatTime(seconds, precision="seconds"):
   out = []
   m, s = divmod(seconds, 60)
   h, m = divmod(m, 60)
-  if h:
+  if h and precision in ["hours", "minutes", "seconds"]:
     out.append("%dh" % h)
-  if m:
+  if m and precision in ["minutes", "seconds"]:
     out.append("%dm" % m)
-  if s:
+  if s and precision in ["seconds"]:
     out.append("%ds" % round(s))
   if not out:
-    out.append("0s")
+    if precision == "hours":
+      out.append("0h")
+    elif precision == "minutes":
+      out.append("0m")
+    elif precision == "seconds":
+      out.append("0s")
   return " ".join(out)
 
 if __name__ == '__main__':
