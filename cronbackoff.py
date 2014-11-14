@@ -12,7 +12,6 @@ import sys
 import time
 import tempfile
 
-PROG = "cronbackoff"
 stateFile = None
 stateExists = True
 user = pwd.getpwuid(os.getuid())[0]
@@ -23,7 +22,7 @@ nextDelay = 0
 
 def main():
   setupLogging()
-  opts = parseArgs()
+  opts = parseArgs(sys.argv)
   mkStateDir(opts.state_dir)
   getLock(opts.state_dir, opts.name)
   readState()
@@ -36,13 +35,13 @@ def setupLogging():
   logging.basicConfig(
       format='%(asctime)s %(name)s(%(levelname)s): %(message)s',
       datefmt="%Y-%m-%d %H:%M:%S")
-  _getLogger().name = PROG
 
 def _getLogger():
   return logging.getLogger()
 
-def parseArgs():
-  parser = argparse.ArgumentParser()
+def parseArgs(args):
+  prog = os.path.basename(args[0])
+  parser = argparse.ArgumentParser(prog=prog)
 
   parser.add_argument("-b", "--base-delay", default=60, type=int,
       help=("Time (in minutes) to skip execution after the first failure"
@@ -58,18 +57,20 @@ def parseArgs():
   parser.add_argument("-n", "--name", default=None,
       help="Name of state file. Defaults to name of command")
   parser.add_argument("--state-dir",
-      default=os.path.join(tempfile.gettempdir(), "%s-%s" % (PROG, user)),
+      default=os.path.join(tempfile.gettempdir(), "%s-%s" % (prog, user)),
       help="Directory to store state in (Default: %(default)s)")
   parser.add_argument("command", nargs="+",
       help="Command to run")
-  opts = parser.parse_args()
+  opts = parser.parse_args(args=args[1:])
 
   if opts.name is None:
     opts.name = os.path.basename(opts.command[0])
   opts.state_dir = os.path.expanduser(opts.state_dir)
 
+  logger = _getLogger()
+  logger.name = prog
   if opts.debug:
-    _getLogger().setLevel(logging.DEBUG)
+    logger.setLevel(logging.DEBUG)
 
   logging.info("Options: %s", opts)
 
