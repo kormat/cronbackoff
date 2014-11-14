@@ -16,16 +16,17 @@ class TestParseArgs(unittest.TestCase):
     max_delay = 10000
     exponent = 22.1222332312
     name = "asdf"
-    command = ["as23d", 1, 4, "hi", "-h"]
-    opts = cronbackoff.parseArgs(
-        [prog,
-          "-b", str(base_delay),
-          "--max-delay", str(max_delay),
-          "-e", str(exponent),
-          "--debug",
-          "--name", name,
-          "--",
-          ] + command)
+    command = ["as23d", "1", "4", "hi", "-h"]
+    args = [
+        prog,
+        "-b", str(base_delay),
+        "--max-delay", str(max_delay),
+        "-e", str(exponent),
+        "--debug",
+        "--name", name,
+        "--",
+        ] + command
+    opts = cronbackoff.parseArgs(args)
 
     self.assertEqual(opts.base_delay, base_delay)
     self.assertEqual(opts.max_delay, max_delay)
