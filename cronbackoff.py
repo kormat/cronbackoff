@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python -tt
 
 import argparse
 import errno
@@ -184,13 +184,14 @@ def formatTime(seconds, precision="seconds"):
   return " ".join(out)
 
 def backoff():
+  now = time.time()
   if not stateExists:
     logger.info("No existing state, execute command")
     return
   if lastDelay == 0:
     logger.info("Not in backoff, execute command")
     return
-  if nextRun > time.time():
+  if nextRun > now:
     logger.info("Still in backoff for another %s, skipping execution.", formatTime(nextRun - now))
     cleanupExit(0)
   logger.info("No longer in backoff, execute command")

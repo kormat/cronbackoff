@@ -7,7 +7,8 @@
 # Disable:
 # - warnings about function/variable/etc names,
 # - warnings about missing docstrings :P
-disable=C0103,C0111
+# - error when (incorrectly) guessing what type a variable is
+disable=C0103,C0111,E1103
 
 [REPORTS]
 # Include message's id in output
