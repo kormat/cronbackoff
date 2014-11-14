@@ -101,10 +101,39 @@ class TestMkStateDir(CleanupExitMocker):
     os.unlink(stateDir)
     os.rmdir(tempDir)
 
-class TextGetLock(CleanupExitMocker):
+class TestGetLock(CleanupExitMocker):
+  def setUp(self):
+    super(TestGetLock, self).setUp()
+    self.tempDir = tempfile.mkdtemp(prefix="test_cronbackoff.")
+
+  def tearDown(self):
+    super(TestGetLock, self).tearDown()
+    os.rmdir(self.tempDir)
+    del self.tempDir
+
+  def test_no_state(self):
+    name = "wqeasdfwe"
+    stateFile = os.path.join(self.tempDir, name)
+    cronbackoff.getLock(self.tempDir, name)
+    self.assertTrue(os.path.isfile(stateFile))
+    os.unlink(stateFile)
+
   def test_no_state_dir(self):
-    tempDir = tempfile.mkdtemp(prefix="test_cronbackoff.")
-    stateDir = os.path.join(tempDir, "noexisty")
+    stateDir = os.path.join(self.tempDir, "noexisty")
     with self.assertRaises(CleanupExitException):
-      cronbackoff.getLock(stateDir, "testing")
-    os.rmdir(tempDir)
+      cronbackoff.getLock(stateDir, "qwerasdf234w")
+
+  def test_no_dir_perms(self):
+    os.chmod(self.tempDir, 0o000)
+    with self.assertRaises(CleanupExitException):
+      cronbackoff.getLock(self.tempDir, "asdwasdfas")
+
+  def test_no_file_perms(self):
+    name = "wva8a3j"
+    stateFile = os.path.join(self.tempDir, name)
+    f = open(stateFile, 'w')
+    os.fchmod(f.fileno(), 0o00)
+    f.close()
+    with self.assertRaises(CleanupExitException):
+      cronbackoff.getLock(self.tempDir, name)
+    os.unlink(stateFile)
