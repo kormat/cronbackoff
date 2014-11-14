@@ -91,10 +91,10 @@ def mkStateDir(state_dir):
 
   st = os.lstat(state_dir)
   errs = []
-  if not stat.S_ISDIR(st.st_mode):
-    errs.append("not a directory")
   if stat.S_ISLNK(st.st_mode):
     errs.append("a symlink")
+  if not stat.S_ISDIR(st.st_mode):
+    errs.append("not a directory")
   if st.st_uid != os.getuid():
     errs.append("not owned by current user")
   if st.st_gid != os.getgid():
