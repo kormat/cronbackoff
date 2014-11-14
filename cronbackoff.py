@@ -41,6 +41,7 @@ def _getLogger():
 
 def parseArgs(args):
   prog = os.path.basename(args[0])
+  bareProg = os.path.splitext(prog)[0]
   parser = argparse.ArgumentParser(prog=prog)
 
   parser.add_argument("-b", "--base-delay", default=60, type=int,
@@ -57,7 +58,7 @@ def parseArgs(args):
   parser.add_argument("-n", "--name", default=None,
       help="Name of state file. Defaults to name of command")
   parser.add_argument("--state-dir",
-      default=os.path.join(tempfile.gettempdir(), "%s-%s" % (prog, user)),
+      default=os.path.join(tempfile.gettempdir(), "%s-%s" % (bareProg, user)),
       help="Directory to store state in (Default: %(default)s)")
   parser.add_argument("command", nargs="+",
       help="Command to run")
