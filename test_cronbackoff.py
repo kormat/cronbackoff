@@ -5,6 +5,9 @@ To be run through nose (https://nose.readthedocs.org/), not directly
 """
 
 import logging
+import os
+import sys
+import tempfile
 import unittest
 
 import cronbackoff
@@ -48,3 +51,48 @@ class TestParseArgs(unittest.TestCase):
     self.assertEqual(opts.debug, False)
     self.assertEqual(opts.name, name)
     self.assertEqual(opts.command, [command])
+
+class TestMkStateDir(unittest.TestCase):
+  def setUp(self):
+    self._cleanupCalled = False
+    self._orig_cleanupExit = cronbackoff.cleanupExit
+    cronbackoff.cleanupExit = self._mock_cleanupExit
+
+  def tearDown(self):
+    cronbackoff.cleanupExit = self._orig_cleanupExit
+
+  def _mock_cleanupExit(self, state):
+    self._cleanupCalled = state
+
+  def test_dir_exists(self):
+    tempDir = tempfile.mkdtemp(prefix="test_cronbackoff.")
+    cronbackoff.mkStateDir(tempDir)
+    self.assertEqual(self._cleanupCalled, False)
+    os.rmdir(tempDir)
+
+  def test_new_dir(self):
+    tempDir = tempfile.mkdtemp(prefix="test_cronbackoff.")
+    stateDir = os.path.join(tempDir, "subdir")
+    cronbackoff.mkStateDir(stateDir)
+    self.assertTrue(os.path.isdir(stateDir))
+    self.assertEqual(self._cleanupCalled, False)
+    os.rmdir(stateDir)
+    os.rmdir(tempDir)
+
+  def test_dir_wrong_owner(self):
+    # It's non-trivial to create dir with wrong owner, so just use one that's guaranteed to exist.
+    cronbackoff.mkStateDir("/")
+    self.assertEqual(self._cleanupCalled, 1)
+
+  def test_file(self):
+    cronbackoff.mkStateDir("/etc/fstab")
+    self.assertEqual(self._cleanupCalled, 1)
+
+  def test_symlink(self):
+    tempDir = tempfile.mkdtemp(prefix="test_cronbackoff.")
+    stateDir = os.path.join(tempDir, "sym")
+    os.symlink(".", stateDir)
+    cronbackoff.mkStateDir(stateDir)
+    self.assertEqual(self._cleanupCalled, 1)
+    os.unlink(stateDir)
+    os.rmdir(tempDir)
