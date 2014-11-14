@@ -13,8 +13,6 @@ import time
 import tempfile
 
 PROG = "cronbackoff"
-opts = None
-logger = None
 stateFile = None
 stateExists = True
 user = pwd.getpwuid(os.getuid())[0]
@@ -25,25 +23,25 @@ nextDelay = 0
 
 def main():
   setupLogging()
-  parseArgs()
-  mkStateDir()
-  getLock()
+  opts = parseArgs()
+  mkStateDir(opts.state_dir)
+  getLock(opts.state_dir, opts.name)
   readState()
   backoff()
-  success = execute()
-  saveState(success)
+  success = execute(opts.command)
+  saveState(success, opts)
   cleanupExit(0)
 
 def setupLogging():
-  global logger
   logging.basicConfig(
       format='%(asctime)s %(name)s(%(levelname)s): %(message)s',
       datefmt="%Y-%m-%d %H:%M:%S")
-  logger = logging.getLogger()
-  logger.name = PROG
+  _getLogger().name = PROG
+
+def _getLogger():
+  return logging.getLogger()
 
 def parseArgs():
-  global opts
   parser = argparse.ArgumentParser()
 
   parser.add_argument("-b", "--base-delay", default=60, type=int,
@@ -71,23 +69,25 @@ def parseArgs():
   opts.state_dir = os.path.expanduser(opts.state_dir)
 
   if opts.debug:
-    logger.setLevel(logging.DEBUG)
+    _getLogger().setLevel(logging.DEBUG)
 
-  logger.info("Options: %s", opts)
+  logging.info("Options: %s", opts)
 
-def mkStateDir():
+  return opts
+
+def mkStateDir(state_dir):
   try:
-    os.mkdir(opts.state_dir, 0700)
+    os.mkdir(state_dir, 0700)
   except OSError as e:
     if e.errno == errno.EEXIST:
-      logger.debug("State dir (%s) already exists", opts.state_dir)
+      logging.debug("State dir (%s) already exists", state_dir)
     else:
       logging.critical("Unable to make state dir: %s", e.strerror)
       cleanupExit(1)
   else:
-    logger.debug("State dir (%s) created", opts.state_dir)
+    logging.debug("State dir (%s) created", state_dir)
 
-  st = os.lstat(opts.state_dir)
+  st = os.lstat(state_dir)
   errs = []
   if not stat.S_ISDIR(st.st_mode):
     errs.append("not a directory")
@@ -98,69 +98,69 @@ def mkStateDir():
   if st.st_gid != os.getgid():
     errs.append("not owned by current group")
   if errs:
-    logger.critical("State dir (%s) is: %s", opts.state_dir, ", ".join(errs))
+    logging.critical("State dir (%s) is: %s", state_dir, ", ".join(errs))
     cleanupExit(1)
 
-def getLock():
+def getLock(state_dir, name):
   global stateFile, stateExists
-  path = os.path.join(opts.state_dir, opts.name)
-  logger.debug("Opening state file (%s)", path)
+  path = os.path.join(state_dir, name)
+  logging.debug("Opening state file (%s)", path)
 
   try:
     stateFile = open(path, 'r+')
   except IOError as e:
     if e.errno == errno.ENOENT:
       stateExists = False
-      logger.debug("State file doesn't exist")
+      logging.debug("State file doesn't exist")
     else:
-      logger.critical("Unable to open state file (%s): %s", path, e.strerror)
+      logging.critical("Unable to open state file (%s): %s", path, e.strerror)
       cleanupExit(1)
 
   if not stateExists:
-    logger.debug("Creating new state file")
+    logging.debug("Creating new state file")
     try:
       stateFile = open(path, 'w+')
     except IOError as e:
-      logger.critical("Unable to create state file (%s): %s", path, e.strerror)
+      logging.critical("Unable to create state file (%s): %s", path, e.strerror)
       cleanupExit(1)
 
-  logger.debug("Locking state file")
+  logging.debug("Locking state file")
   try:
     fcntl.lockf(stateFile.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
   except IOError as e:
     if e.errno in [errno.EACCES, errno.EAGAIN]:
-      logger.critical("State file (%s) already locked", path)
+      logging.critical("State file (%s) already locked", path)
     else:
-      logger.critical("Unable to lock state file (%s): %s", path, e.strerror)
+      logging.critical("Unable to lock state file (%s): %s", path, e.strerror)
     cleanupExit(1)
-  logger.debug("State file opened & locked")
+  logging.debug("State file opened & locked")
 
 def readState():
   global lastRun, lastDelay, nextRun
 
   if not stateExists:
-    logger.info("No existing state")
+    logging.info("No existing state")
     return
 
-  logger.debug("Stat'ing state file")
+  logging.debug("Stat'ing state file")
   st = os.fstat(stateFile.fileno())
   lastRun = st.st_mtime
-  logger.info("Last run finished: %s (%s ago)",
+  logging.info("Last run finished: %s (%s ago)",
       time.ctime(lastRun), formatTime(time.time() - lastRun))
 
   contents = stateFile.read()
-  logger.debug("State file contents: %r", contents)
+  logging.debug("State file contents: %r", contents)
 
   try:
     lastDelay = int(contents)
   except ValueError:
-    logger.critical("Corrupt state file - %r is not a valid integer", contents)
+    logging.critical("Corrupt state file - %r is not a valid integer", contents)
     cleanupExit(1)
   nextRun = lastRun + (lastDelay * 60)
   if lastDelay == 0:
-    logger.info("No previous backoff")
+    logging.info("No previous backoff")
   else:
-    logger.info("Last backoff (%s) was until %s",
+    logging.info("Last backoff (%s) was until %s",
         formatTime(lastDelay * 60, precision="minutes"),
         time.ctime(nextRun))
 
@@ -186,44 +186,44 @@ def formatTime(seconds, precision="seconds"):
 def backoff():
   now = time.time()
   if not stateExists:
-    logger.info("No existing state, execute command")
+    logging.info("No existing state, execute command")
     return
   if lastDelay == 0:
-    logger.info("Not in backoff, execute command")
+    logging.info("Not in backoff, execute command")
     return
   if nextRun > now:
-    logger.info("Still in backoff for another %s, skipping execution.", formatTime(nextRun - now))
+    logging.info("Still in backoff for another %s, skipping execution.", formatTime(nextRun - now))
     cleanupExit(0)
-  logger.info("No longer in backoff, execute command")
+  logging.info("No longer in backoff, execute command")
 
-def execute():
-  logger.info("About to execute command: %s", " ".join(opts.command))
-  logger.debug("Raw command: %r", opts.command)
+def execute(command):
+  logging.info("About to execute command: %s", " ".join(command))
+  logging.debug("Raw command: %r", command)
   success = True
   try:
-    output = subprocess.check_output(opts.command, stderr=subprocess.STDOUT)
+    output = subprocess.check_output(command, stderr=subprocess.STDOUT)
   except subprocess.CalledProcessError as e:
-    logger.warning("Command exited with non-zero return status: %d", e.returncode)
-    logger.info("Command output:")
+    logging.warning("Command exited with non-zero return status: %d", e.returncode)
+    logging.info("Command output:")
     for line in e.output.splitlines():
-      logger.info("    %s", line)
+      logging.info("    %s", line)
     success = False
   except OSError as e:
-    logger.critical("Error running command: %s", e.strerror)
+    logging.critical("Error running command: %s", e.strerror)
     cleanupExit(1)
   else:
-    logger.info("Command exited cleanly")
-    logger.debug("Command output:")
+    logging.info("Command exited cleanly")
+    logging.debug("Command output:")
     for line in output.splitlines():
-      logger.debug("    %s", line)
+      logging.debug("    %s", line)
 
   return success
 
-def saveState(success):
+def saveState(success, opts):
   global stateFile, nextDelay
 
   if success:
-    logger.info("Execution successful, no backoff")
+    logging.info("Execution successful, no backoff")
     nextDelay = 0
   else:
     if not lastDelay: # Works if lastDelay was 0, or is unset due to no preexisting state
@@ -241,7 +241,7 @@ def saveState(success):
   stateFile = None
 
   if nextDelay:
-    logger.warning("Execution unclean, backoff delay is %s (until %s)",
+    logging.warning("Execution unclean, backoff delay is %s (until %s)",
         formatTime(nextDelay * 60), time.ctime(st.st_mtime + nextDelay * 60))
 
 def cleanupExit(status):
@@ -253,11 +253,11 @@ def cleanupExit(status):
     stateFile.close()
 
   if status == 0:
-    logging.debug("Exiting (%d)", exit)
+    logging.debug("Exiting (%d)", status)
   else:
-    logging.critical("Exiting (%d)", exit)
+    logging.critical("Exiting (%d)", status)
 
-  sys.exit(exit)
+  sys.exit(status)
 
 if __name__ == '__main__':
   main()
