@@ -52,9 +52,8 @@ class TestParseArgs(unittest.TestCase):
     self.assertEqual(opts.name, name)
     self.assertEqual(opts.command, [command])
 
-class TestMkStateDir(unittest.TestCase):
+class CleanupExitMocker(unittest.TestCase):
   def setUp(self):
-    self._cleanupCalled = False
     self._orig_cleanupExit = cronbackoff.cleanupExit
     cronbackoff.cleanupExit = self._mock_cleanupExit
 
@@ -62,12 +61,17 @@ class TestMkStateDir(unittest.TestCase):
     cronbackoff.cleanupExit = self._orig_cleanupExit
 
   def _mock_cleanupExit(self, state):
-    self._cleanupCalled = state
+    if state != 0:
+      raise CleanupExitException
 
+class CleanupExitException(Exception):
+  pass
+
+class TestMkStateDir(CleanupExitMocker):
   def test_dir_exists(self):
     tempDir = tempfile.mkdtemp(prefix="test_cronbackoff.")
     cronbackoff.mkStateDir(tempDir)
-    self.assertEqual(self._cleanupCalled, False)
+    # CleanupExitException wasn't raised, all is good.
     os.rmdir(tempDir)
 
   def test_new_dir(self):
@@ -75,24 +79,32 @@ class TestMkStateDir(unittest.TestCase):
     stateDir = os.path.join(tempDir, "subdir")
     cronbackoff.mkStateDir(stateDir)
     self.assertTrue(os.path.isdir(stateDir))
-    self.assertEqual(self._cleanupCalled, False)
+    # CleanupExitException wasn't raised, all is good.
     os.rmdir(stateDir)
     os.rmdir(tempDir)
 
   def test_dir_wrong_owner(self):
     # It's non-trivial to create dir with wrong owner, so just use one that's guaranteed to exist.
-    cronbackoff.mkStateDir("/")
-    self.assertEqual(self._cleanupCalled, 1)
+    with self.assertRaises(CleanupExitException):
+      cronbackoff.mkStateDir("/")
 
   def test_file(self):
-    cronbackoff.mkStateDir("/etc/fstab")
-    self.assertEqual(self._cleanupCalled, 1)
+    with self.assertRaises(CleanupExitException):
+      cronbackoff.mkStateDir("/etc/fstab")
 
   def test_symlink(self):
     tempDir = tempfile.mkdtemp(prefix="test_cronbackoff.")
     stateDir = os.path.join(tempDir, "sym")
     os.symlink(".", stateDir)
-    cronbackoff.mkStateDir(stateDir)
-    self.assertEqual(self._cleanupCalled, 1)
+    with self.assertRaises(CleanupExitException):
+      cronbackoff.mkStateDir(stateDir)
     os.unlink(stateDir)
+    os.rmdir(tempDir)
+
+class TextGetLock(CleanupExitMocker):
+  def test_no_state_dir(self):
+    tempDir = tempfile.mkdtemp(prefix="test_cronbackoff.")
+    stateDir = os.path.join(tempDir, "noexisty")
+    with self.assertRaises(CleanupExitException):
+      cronbackoff.getLock(stateDir, "testing")
     os.rmdir(tempDir)
