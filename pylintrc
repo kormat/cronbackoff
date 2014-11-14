@@ -1,0 +1,26 @@
+[MESSAGES CONTROL]
+# Disable the message, report, category or checker with the given id(s). You
+# can either give multiple identifier separated by comma (,) or put this option
+# multiple time (only on the command line, not in the configuration file where
+# it should appear only once).
+
+# Disable:
+# - warnings about function/variable/etc names,
+# - warnings about missing docstrings :P
+disable=C0103,C0111
+
+[REPORTS]
+# Include message's id in output
+include-ids=yes
+
+# Tells whether to display a full report or only the messages
+reports=no
+
+[FORMAT]
+
+# Maximum number of characters on a single line.
+max-line-length=100
+
+# String used as indentation unit. This is usually " " (4 spaces) or "\t" (1
+# tab).
+indent-string='  '
