@@ -47,14 +47,20 @@ def parseArgs():
   parser = argparse.ArgumentParser()
 
   parser.add_argument("-b", "--base-delay", default=60, type=int,
-      help="Time (in minutes) to skip execution after the first failure (Default: %(default)s mins)")
+      help=("Time (in minutes) to skip execution after the first failure"
+            " (Default: %(default)s mins)"))
   parser.add_argument("-m", "--max-delay", default=(60 * 24), type=int,
-      help="Maximum time (in minutes) to skip execution (Default: %(default)s mins)")
+      help=("Maximum time (in minutes) to skip execution"
+            " (Default: %(default)s mins)"))
   parser.add_argument("-e", "--exponent", default=4, type=float,
-      help="How much to multiply the previous delay upon another failure (Default: %(default)sx)")
-  parser.add_argument("-d", "--debug", action='store_true', help="Enable debugging output")
-  parser.add_argument("-n", "--name", default=None, help="Name of state file. Defaults to name of command")
-  parser.add_argument("--state-dir", default=os.path.join(tempfile.gettempdir(), "%s-%s" % (PROG, user)),
+      help=("How much to multiply the previous delay upon another failure"
+            " (Default: %(default)sx)"))
+  parser.add_argument("-d", "--debug", action='store_true',
+      help="Enable debugging output")
+  parser.add_argument("-n", "--name", default=None,
+      help="Name of state file. Defaults to name of command")
+  parser.add_argument("--state-dir",
+      default=os.path.join(tempfile.gettempdir(), "%s-%s" % (PROG, user)),
       help="Directory to store state in (Default: %(default)s)")
   parser.add_argument("command", nargs="+",
       help="Command to run")
@@ -139,7 +145,8 @@ def readState():
   logger.debug("Stat'ing state file")
   st = os.fstat(stateFile.fileno())
   lastRun = st.st_mtime
-  logger.info("Last run finished: %s (%s ago)", time.ctime(lastRun), formatTime(time.time() - lastRun))
+  logger.info("Last run finished: %s (%s ago)",
+      time.ctime(lastRun), formatTime(time.time() - lastRun))
 
   contents = stateFile.read()
   logger.debug("State file contents: %r", contents)
@@ -212,6 +219,8 @@ def execute():
   return success
 
 def saveState(success):
+  global stateFile, nextDelay
+
   if success:
     logger.info("Execution successful, no backoff")
     nextDelay = 0
@@ -231,7 +240,8 @@ def saveState(success):
   stateFile = None
 
   if nextDelay:
-    logger.warning("Execution unclean, backoff delay is %s (until %s)", formatTime(nextDelay * 60), time.ctime(st.st_mtime + nextDelay * 60))
+    logger.warning("Execution unclean, backoff delay is %s (until %s)",
+        formatTime(nextDelay * 60), time.ctime(st.st_mtime + nextDelay * 60))
 
 def cleanupExit(status):
   if not stateExists and stateFile:
