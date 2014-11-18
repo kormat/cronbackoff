@@ -235,6 +235,19 @@ class TestStateRead(StateWrapper):
     self.assertEqual(self.state.lastDelay, 12)
     os.unlink(self.state.filePath)
 
+  def test_has_state_zero(self):
+    with open(self.state.filePath, 'w') as f:
+      f.write("0\n")
+    now = time.time()
+    os.utime(self.state.filePath, (now, now))
+    self.state.getLock()
+    self.state.read()
+    # Using AlmostEqual as FS timestamp precision can cause minor differences
+    self.assertAlmostEqual(self.state.lastRun, now, delta=1)
+    self.assertAlmostEqual(self.state.nextRun, now, delta=1)
+    self.assertEqual(self.state.lastDelay, 0)
+    os.unlink(self.state.filePath)
+
   def test_empty_state(self):
     open(self.state.filePath, 'w').close()
     self.state.getLock()
@@ -312,6 +325,14 @@ class TestStateSave(StateWrapper):
   def test_no_lastDelay_max(self):
     self.state.lastDelay = 0
     self._basic_test(False, 99, 98, 7, "98\n")
+
+  def test_lastDelay(self):
+    self.state.lastDelay = 33
+    self._basic_test(False, 12, 999, 10, "330\n")
+
+  def test_lastDelay_max(self):
+    self.state.lastDelay = 33
+    self._basic_test(False, 12, 263, 10, "263\n")
 
   def test_write_error(self):
     self.state.file.close()
