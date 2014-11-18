@@ -263,7 +263,7 @@ class State(object):
 
     logging.debug("Locking state file")
     try:
-      fcntl.lockf(self.file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+      fcntl.flock(self.file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except IOError as e:
       if e.errno in [errno.EACCES, errno.EAGAIN]:
         logging.critical("State file (%s) already locked", self.filePath)
