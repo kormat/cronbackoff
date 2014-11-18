@@ -117,10 +117,20 @@ class TestGetLock(CleanupExitMocker):
     os.rmdir(self.tempDir)
     del self.tempDir
 
+  def test_state(self):
+    name = self.id()
+    stateFile = os.path.join(self.tempDir, name)
+    f = open(stateFile, 'w')
+    f.close()
+    cronbackoff.getLock(self.tempDir, name)
+    self.assertTrue(cronbackoff.stateExists)
+    os.unlink(stateFile)
+
   def test_no_state(self):
     name = self.id()
     stateFile = os.path.join(self.tempDir, name)
     cronbackoff.getLock(self.tempDir, name)
+    self.assertFalse(cronbackoff.stateExists)
     self.assertTrue(os.path.isfile(stateFile))
     os.unlink(stateFile)
 
@@ -156,6 +166,14 @@ class TestGetLock(CleanupExitMocker):
     f = open(stateFile, 'w')
     os.fchmod(f.fileno(), 0o400)
     f.close()
+    with self.assertRaises(CleanupExitException):
+      cronbackoff.getLock(self.tempDir, name)
+    os.unlink(stateFile)
+
+  def test_file_locked(self):
+    name = self.id()
+    stateFile = os.path.join(self.tempDir, name)
+    cronbackoff.getLock(self.tempDir, name)
     with self.assertRaises(CleanupExitException):
       cronbackoff.getLock(self.tempDir, name)
     os.unlink(stateFile)
