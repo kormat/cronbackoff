@@ -100,13 +100,13 @@ def execute(command):
   try:
     output = subprocess.check_output(command, stderr=subprocess.STDOUT)
   except subprocess.CalledProcessError as e:
-    logging.warning("Command exited with non-zero return status: %d", e.returncode)
+    logging.warning(e)
     logging.info("Command output:")
     for line in e.output.splitlines():
       logging.info("    %s", line)
     success = False
   except OSError as e:
-    logging.critical("Error running command: %s", e.strerror)
+    logging.critical("Error running command %r: %s", command, e)
     cleanupExit(1)
   else:
     logging.info("Command exited cleanly")
@@ -117,12 +117,12 @@ def execute(command):
   return success
 
 def cleanupExit(status):
-  if not state.stateExists and state.file:
-    # If there wasn't an existing state file, and it hasn't been closed already,
-    # that means we've created an empty one, so unlink it.
-    os.unlink(stateFile.name)
-    fcntl.lockf(stateFile.fileno(), fcntl.LOCK_UN)
-    stateFile.close()
+  #if not state.stateExists and state.file:
+  #  # If there wasn't an existing state file, and it hasn't been closed already,
+  #  # that means we've created an empty one, so unlink it.
+  #  os.unlink(stateFile.name)
+  #  fcntl.lockf(stateFile.fileno(), fcntl.LOCK_UN)
+  #  stateFile.close()
 
   if status == 0:
     logging.debug("Exiting (%d)", status)
@@ -145,16 +145,18 @@ class State(object):
     self.nextRun = None
 
   def mkStateDir(self):
+    logging.debug("Creating state dir (%s)", self.dir)
+
     try:
       os.mkdir(self.dir, 0700)
     except OSError as e:
       if e.errno == errno.EEXIST:
-        logging.debug("State dir (%s) already exists", self.dir) # Deliberately broken, for testing tests.
+        logging.debug("State dir already exists")
       else:
-        logging.critical("Unable to make state dir: %s", e.strerror)
+        logging.critical("Unable to make state dir: %s", e)
         cleanupExit(1)
     else:
-      logging.debug("State dir (%s) created", self.dir) # ditto
+      logging.debug("State dir (%s) created", self.dir)
 
     st = os.lstat(self.dir)
     errs = []
@@ -167,20 +169,20 @@ class State(object):
     if st.st_gid != os.getgid():
       errs.append("not owned by current group")
     if errs:
-      logging.critical("State dir (%s) is: %s", dir, ", ".join(errs))
+      logging.critical("State dir (%s) is: %s", self.dir, ", ".join(errs))
       cleanupExit(1)
 
   def getLock(self):
     logging.debug("Opening state file (%s)", self.filePath)
 
     try:
-      self.file = open(self.filePath, 'r+')
+      self.file = open(self.filePath, 'r')
     except IOError as e:
       if e.errno == errno.ENOENT:
         self.stateExists = False
         logging.debug("State file doesn't exist")
       else:
-        logging.critical("Unable to open state file (%s): %s", self.filePath, e.strerror)
+        logging.critical("Unable to open state file: %s", e)
         cleanupExit(1)
     else:
       logging.debug("State file already exists")
@@ -190,17 +192,14 @@ class State(object):
       try:
         self.file = open(self.filePath, 'w+')
       except IOError as e:
-        logging.critical("Unable to create state file (%s): %s", self.filePath, e.strerror)
+        logging.critical("Unable to create state file: %s", e)
         cleanupExit(1)
 
     logging.debug("Locking state file")
     try:
       fcntl.flock(self.file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except IOError as e:
-      if e.errno in [errno.EACCES, errno.EAGAIN]:
-        logging.critical("State file (%s) already locked", self.filePath)
-      else:
-        logging.critical("Unable to lock state file (%s): %s", self.filePath, e.strerror)
+      logging.critical("Unable to lock state file (%s): %s", self.filePath, e)
       cleanupExit(1)
     logging.debug("State file opened & locked")
 
@@ -215,13 +214,17 @@ class State(object):
     logging.info("Last run finished: %s (%s ago)",
         time.ctime(self.lastRun), formatTime(time.time() - self.lastRun))
 
-    contents = self.file.read()
+    try:
+      contents = self.file.read()
+    except IOError as e:
+      logging.critical("Unable to read state file: %s", e)
+      cleanupExit(1)
     logging.debug("State file contents: %r", contents)
 
     try:
       self.lastDelay = int(contents)
     except ValueError:
-      logging.critical("Corrupt state file - %r is not a valid integer", contents)
+      logging.critical("Corrupt state file - not a valid integer: %r", contents)
       cleanupExit(1)
     self.nextRun = self.lastRun + (self.lastDelay * 60)
     if self.lastDelay == 0:
@@ -262,7 +265,7 @@ class State(object):
       self.file.close()
       self.file = None
     except IOError as e:
-      logging.critical("Unable to write state file (%s): %s", self.filePath, e.strerror)
+      logging.critical("Unable to write state file: %s", e)
       cleanupExit(1)
 
     st = os.lstat(self.filePath)
