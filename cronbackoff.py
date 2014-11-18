@@ -25,7 +25,7 @@ def main():
   opts = parseArgs(sys.argv)
   state = State(opts.state_dir, opts.name)
   state.mkStateDir()
-  getLock(opts.state_dir, opts.name)
+  state.getLock()
   readState()
   backoff()
   success = execute(opts.command)
@@ -78,39 +78,6 @@ def parseArgs(args):
 
   return opts
 
-def getLock(state_dir, name):
-  global stateFile, stateExists
-  path = os.path.join(state_dir, name)
-  logging.debug("Opening state file (%s)", path)
-
-  try:
-    stateFile = open(path, 'r+')
-  except IOError as e:
-    if e.errno == errno.ENOENT:
-      stateExists = False
-      logging.debug("State file doesn't exist")
-    else:
-      logging.critical("Unable to open state file (%s): %s", path, e.strerror)
-      cleanupExit(1)
-
-  if not stateExists:
-    logging.debug("Creating new state file")
-    try:
-      stateFile = open(path, 'w+')
-    except IOError as e:
-      logging.critical("Unable to create state file (%s): %s", path, e.strerror)
-      cleanupExit(1)
-
-  logging.debug("Locking state file")
-  try:
-    fcntl.lockf(stateFile.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-  except IOError as e:
-    if e.errno in [errno.EACCES, errno.EAGAIN]:
-      logging.critical("State file (%s) already locked", path)
-    else:
-      logging.critical("Unable to lock state file (%s): %s", path, e.strerror)
-    cleanupExit(1)
-  logging.debug("State file opened & locked")
 
 def readState():
   global lastRun, lastDelay, nextRun
@@ -241,7 +208,9 @@ class State(object):
   def __init__(self, dir_, name):
     self.dir = dir_
     self.name = name
-    self.file = os.path.join(self.dir, self.name)
+    self.filePath = os.path.join(self.dir, self.name)
+    self.file = None
+    self.stateExists = True
 
   def mkStateDir(self):
     try:
@@ -268,6 +237,41 @@ class State(object):
     if errs:
       logging.critical("State dir (%s) is: %s", dir, ", ".join(errs))
       cleanupExit(1)
+
+  def getLock(self):
+    logging.debug("Opening state file (%s)", self.filePath)
+
+    try:
+      self.file = open(self.filePath, 'r+')
+    except IOError as e:
+      if e.errno == errno.ENOENT:
+        self.stateExists = False
+        logging.debug("State file doesn't exist")
+      else:
+        logging.critical("Unable to open state file (%s): %s", self.filePath, e.strerror)
+        cleanupExit(1)
+    else:
+      logging.debug("State file already exists")
+
+    if not self.stateExists:
+      logging.debug("Creating new state file")
+      try:
+        self.file = open(self.filePath, 'w+')
+      except IOError as e:
+        logging.critical("Unable to create state file (%s): %s", self.filePath, e.strerror)
+        cleanupExit(1)
+
+    logging.debug("Locking state file")
+    try:
+      fcntl.lockf(self.file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except IOError as e:
+      if e.errno in [errno.EACCES, errno.EAGAIN]:
+        logging.critical("State file (%s) already locked", self.filePath)
+      else:
+        logging.critical("Unable to lock state file (%s): %s", self.filePath, e.strerror)
+      cleanupExit(1)
+    logging.debug("State file opened & locked")
+
 
 if __name__ == '__main__':
   main()
