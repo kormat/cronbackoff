@@ -261,44 +261,48 @@ class TestStateBackoff(StateWrapper):
     self.state.backoff()
 
 class TestStateSave(StateWrapper):
-  def test_mtime(self):
+  def setUp(self):
+    super(TestStateSave, self).setUp()
     self.state.getLock()
     self.state.read()
+
+  def tearDown(self):
+    os.unlink(self.state.filePath)
+    super(TestStateSave, self).tearDown()
+
+  def _basic_test(self, success, base, max_, exp, contents):
+    self.state.save(success, base, max_, exp)
+
+    with open(self.state.filePath) as f:
+      self.assertEqual(f.read(), contents)
+
+  def test_mtime(self):
     self.state.save(True, 1, 1, 1)
 
     st = os.lstat(self.state.filePath)
     self.assertAlmostEqual(st.st_mtime, time.time(), delta=1)
 
-    os.unlink(self.state.filePath)
-
   def test_success(self):
-    self.state.getLock()
-    self.state.read()
-    self.state.save(True, 1, 1, 1)
-
-    with open(self.state.filePath) as f:
-      self.assertEqual(f.read(), "0\n")
-
-    os.unlink(self.state.filePath)
+    self._basic_test(True, 1, 1, 1, "0\n")
 
   def test_no_state(self):
-    self.state.getLock()
-    self.state.read()
     self.state.lastDelay = None
-    self.state.save(False, 133, 300, 3)
-
-    with open(self.state.filePath) as f:
-      self.assertEqual(f.read(), "133\n")
-
-    os.unlink(self.state.filePath)
+    self._basic_test(False, 133, 300, 3, "133\n")
 
   def test_no_state_max(self):
-    self.state.getLock()
-    self.state.read()
     self.state.lastDelay = None
-    self.state.save(False, 99, 98, 7)
+    self._basic_test(False, 99, 98, 7, "98\n")
 
-    with open(self.state.filePath) as f:
-      self.assertEqual(f.read(), "98\n")
+  def test_no_lastDelay(self):
+    self.state.lastDelay = 0
+    self._basic_test(False, 133, 300, 3, "133\n")
 
-    os.unlink(self.state.filePath)
+  def test_no_lastDelay_max(self):
+    self.state.lastDelay = 0
+    self._basic_test(False, 99, 98, 7, "98\n")
+
+  def test_write_error(self):
+    self.state.file.close()
+    with open(self.state.filePath, 'r') as self.state.file:
+      with self.assertRaises(CleanupExitException):
+        self.state.save(False, 1, 1, 1)

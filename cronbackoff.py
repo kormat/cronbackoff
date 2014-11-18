@@ -254,15 +254,18 @@ class State(object):
       else:
         nextDelay = min(self.lastDelay * exponent, max_delay)
 
-    self.file.seek(0)
-    self.file.truncate(0)
-    self.file.write("%d\n" % nextDelay)
-    self.file.flush()
-    st = os.fstat(self.file.fileno())
-    fcntl.flock(self.file.fileno(), fcntl.LOCK_UN)
-    self.file.close()
-    self.file = None
+    try:
+      self.file.seek(0)
+      self.file.truncate(0)
+      self.file.write("%d\n" % nextDelay)
+      self.file.flush()
+      self.file.close()
+      self.file = None
+    except IOError as e:
+      logging.critical("Unable to write state file (%s): %s", self.filePath, e.strerror)
+      cleanupExit(1)
 
+    st = os.lstat(self.filePath)
     if nextDelay:
       logging.warning("Execution unclean, backoff delay is %s (until %s)",
           formatTime(nextDelay * 60), time.ctime(st.st_mtime + nextDelay * 60))
