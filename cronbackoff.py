@@ -23,7 +23,8 @@ nextDelay = 0
 def main():
   setupLogging()
   opts = parseArgs(sys.argv)
-  mkStateDir(opts.state_dir)
+  state = State(opts.state_dir, opts.name)
+  state.mkStateDir()
   getLock(opts.state_dir, opts.name)
   readState()
   backoff()
@@ -76,32 +77,6 @@ def parseArgs(args):
   logging.info("Options: %s", opts)
 
   return opts
-
-def mkStateDir(state_dir):
-  try:
-    os.mkdir(state_dir, 0700)
-  except OSError as e:
-    if e.errno == errno.EEXIST:
-      logging.debug("State dir (%s) already exists", state_dir)
-    else:
-      logging.critical("Unable to make state dir: %s", e.strerror)
-      cleanupExit(1)
-  else:
-    logging.debug("State dir (%s) created", state_dir)
-
-  st = os.lstat(state_dir)
-  errs = []
-  if stat.S_ISLNK(st.st_mode):
-    errs.append("a symlink")
-  if not stat.S_ISDIR(st.st_mode):
-    errs.append("not a directory")
-  if st.st_uid != os.getuid():
-    errs.append("not owned by current user")
-  if st.st_gid != os.getgid():
-    errs.append("not owned by current group")
-  if errs:
-    logging.critical("State dir (%s) is: %s", state_dir, ", ".join(errs))
-    cleanupExit(1)
 
 def getLock(state_dir, name):
   global stateFile, stateExists
@@ -260,6 +235,39 @@ def cleanupExit(status):
     logging.critical("Exiting (%d)", status)
 
   sys.exit(status)
+
+
+class State(object):
+  def __init__(self, dir_, name):
+    self.dir = dir_
+    self.name = name
+    self.file = os.path.join(self.dir, self.name)
+
+  def mkStateDir(self):
+    try:
+      os.mkdir(self.dir, 0700)
+    except OSError as e:
+      if e.errno == errno.EEXIST:
+        logging.debug("State dir (%s) already exists", self.dir) # Deliberately broken, for testing tests.
+      else:
+        logging.critical("Unable to make state dir: %s", e.strerror)
+        cleanupExit(1)
+    else:
+      logging.debug("State dir (%s) created", self.dir) # ditto
+
+    st = os.lstat(self.dir)
+    errs = []
+    if stat.S_ISLNK(st.st_mode):
+      errs.append("a symlink")
+    if not stat.S_ISDIR(st.st_mode):
+      errs.append("not a directory")
+    if st.st_uid != os.getuid():
+      errs.append("not owned by current user")
+    if st.st_gid != os.getgid():
+      errs.append("not owned by current group")
+    if errs:
+      logging.critical("State dir (%s) is: %s", dir, ", ".join(errs))
+      cleanupExit(1)
 
 if __name__ == '__main__':
   main()
