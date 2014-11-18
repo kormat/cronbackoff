@@ -250,7 +250,7 @@ class State(object):
       nextDelay = 0
     else:
       if not self.lastDelay: # Works if lastDelay was 0, or is unset due to no preexisting state
-        nextDelay = base_delay
+        nextDelay = min(base_delay, max_delay) # max_delay wins over base_delay
       else:
         nextDelay = min(self.lastDelay * exponent, max_delay)
 
