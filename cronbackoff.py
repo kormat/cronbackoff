@@ -25,7 +25,7 @@ def main():
   state.read()
   state.backoff()
   success = execute(opts.command)
-  saveState(success, opts)
+  state.save(success, opts.base_delay, opts.max_delay, opts.exponent)
   cleanupExit(0)
 
 def setupLogging():
@@ -115,31 +115,6 @@ def execute(command):
       logging.debug("    %s", line)
 
   return success
-
-def saveState(success, opts):
-  global stateFile, nextDelay
-
-  if success:
-    logging.info("Execution successful, no backoff")
-    nextDelay = 0
-  else:
-    if not lastDelay: # Works if lastDelay was 0, or is unset due to no preexisting state
-      nextDelay = opts.base_delay
-    else:
-      nextDelay = min(lastDelay * opts.exponent, opts.max_delay)
-
-  stateFile.seek(0)
-  stateFile.truncate(0)
-  stateFile.write("%d\n" % nextDelay)
-  stateFile.flush()
-  st = os.fstat(stateFile.fileno())
-  fcntl.lockf(stateFile.fileno(), fcntl.LOCK_UN)
-  stateFile.close()
-  stateFile = None
-
-  if nextDelay:
-    logging.warning("Execution unclean, backoff delay is %s (until %s)",
-        formatTime(nextDelay * 60), time.ctime(st.st_mtime + nextDelay * 60))
 
 def cleanupExit(status):
   if not state.stateExists and state.file:
@@ -268,6 +243,29 @@ class State(object):
       logging.info("Still in backoff for another %s, skipping execution.", formatTime(self.nextRun - now))
       cleanupExit(0)
     logging.info("No longer in backoff, execute command")
+
+  def save(self, success, base_delay, max_delay, exponent):
+    if success:
+      logging.info("Execution successful, no backoff")
+      nextDelay = 0
+    else:
+      if not self.lastDelay: # Works if lastDelay was 0, or is unset due to no preexisting state
+        nextDelay = base_delay
+      else:
+        nextDelay = min(self.lastDelay * exponent, max_delay)
+
+    self.file.seek(0)
+    self.file.truncate(0)
+    self.file.write("%d\n" % nextDelay)
+    self.file.flush()
+    st = os.fstat(self.file.fileno())
+    fcntl.flock(self.file.fileno(), fcntl.LOCK_UN)
+    self.file.close()
+    self.file = None
+
+    if nextDelay:
+      logging.warning("Execution unclean, backoff delay is %s (until %s)",
+          formatTime(nextDelay * 60), time.ctime(st.st_mtime + nextDelay * 60))
 
 
 if __name__ == '__main__':

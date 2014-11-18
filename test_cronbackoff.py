@@ -259,3 +259,46 @@ class TestStateBackoff(StateWrapper):
   def test_out_of_backoff(self):
     self.state.nextRun = time.time() - 10
     self.state.backoff()
+
+class TestStateSave(StateWrapper):
+  def test_mtime(self):
+    self.state.getLock()
+    self.state.read()
+    self.state.save(True, 1, 1, 1)
+
+    st = os.lstat(self.state.filePath)
+    self.assertAlmostEqual(st.st_mtime, time.time(), delta=1)
+
+    os.unlink(self.state.filePath)
+
+  def test_success(self):
+    self.state.getLock()
+    self.state.read()
+    self.state.save(True, 1, 1, 1)
+
+    with open(self.state.filePath) as f:
+      self.assertEqual(f.read(), "0\n")
+
+    os.unlink(self.state.filePath)
+
+  def test_no_state(self):
+    self.state.getLock()
+    self.state.read()
+    self.state.lastDelay = None
+    self.state.save(False, 133, 300, 3)
+
+    with open(self.state.filePath) as f:
+      self.assertEqual(f.read(), "133\n")
+
+    os.unlink(self.state.filePath)
+
+  def test_no_state_max(self):
+    self.state.getLock()
+    self.state.read()
+    self.state.lastDelay = None
+    self.state.save(False, 99, 98, 7)
+
+    with open(self.state.filePath) as f:
+      self.assertEqual(f.read(), "98\n")
+
+    os.unlink(self.state.filePath)
