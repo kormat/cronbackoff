@@ -223,9 +223,8 @@ class TestStateRead(StateWrapper):
     os.unlink(self.state.filePath)
 
   def test_has_state(self):
-    f = open(self.state.filePath, 'w')
-    f.write("12\n")
-    f.close()
+    with open(self.state.filePath, 'w') as f:
+      f.write("12\n")
     now = time.time()
     os.utime(self.state.filePath, (now, now))
     self.state.getLock()
@@ -236,12 +235,25 @@ class TestStateRead(StateWrapper):
     self.assertEqual(self.state.lastDelay, 12)
     os.unlink(self.state.filePath)
 
-  def test_no_state(self):
-    f = open(self.state.filePath, 'w')
-    f.close()
+  def test_empty_state(self):
+    open(self.state.filePath, 'w').close()
     self.state.getLock()
     with self.assertRaises(CleanupExitException):
       self.state.read()
+    os.unlink(self.state.filePath)
+
+  def test_invalid_state(self):
+    with open(self.state.filePath, 'w') as f:
+      f.write("Hello, world")
+    self.state.getLock()
+    with self.assertRaises(CleanupExitException):
+      self.state.read()
+    os.unlink(self.state.filePath)
+
+  def test_read_error(self):
+    with open(self.state.filePath, 'w') as self.state.file:
+      with self.assertRaises(CleanupExitException):
+        self.state.read()
     os.unlink(self.state.filePath)
 
 class TestStateBackoff(StateWrapper):
