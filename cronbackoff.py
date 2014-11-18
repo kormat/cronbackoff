@@ -12,22 +12,18 @@ import sys
 import time
 import tempfile
 
-stateFile = None
-stateExists = True
 user = pwd.getpwuid(os.getuid())[0]
-lastRun = None
-lastDelay = None
-nextRun = None
-nextDelay = 0
+state = None
 
 def main():
+  global state
   setupLogging()
   opts = parseArgs(sys.argv)
   state = State(opts.state_dir, opts.name)
   state.mkStateDir()
   state.getLock()
   state.read()
-  backoff()
+  state.backoff()
   success = execute(opts.command)
   saveState(success, opts)
   cleanupExit(0)
@@ -78,7 +74,6 @@ def parseArgs(args):
 
   return opts
 
-
 def formatTime(seconds, precision="seconds"):
   out = []
   m, s = divmod(seconds, 60)
@@ -97,19 +92,6 @@ def formatTime(seconds, precision="seconds"):
     elif precision == "seconds":
       out.append("0s")
   return " ".join(out)
-
-def backoff():
-  now = time.time()
-  if not stateExists:
-    logging.info("No existing state, execute command")
-    return
-  if lastDelay == 0:
-    logging.info("Not in backoff, execute command")
-    return
-  if nextRun > now:
-    logging.info("Still in backoff for another %s, skipping execution.", formatTime(nextRun - now))
-    cleanupExit(0)
-  logging.info("No longer in backoff, execute command")
 
 def execute(command):
   logging.info("About to execute command: %s", " ".join(command))
@@ -160,7 +142,7 @@ def saveState(success, opts):
         formatTime(nextDelay * 60), time.ctime(st.st_mtime + nextDelay * 60))
 
 def cleanupExit(status):
-  if not stateExists and stateFile:
+  if not state.stateExists and state.file:
     # If there wasn't an existing state file, and it hasn't been closed already,
     # that means we've created an empty one, so unlink it.
     os.unlink(stateFile.name)
@@ -273,6 +255,19 @@ class State(object):
       logging.info("Last backoff (%s) was until %s",
           formatTime(self.lastDelay * 60, precision="minutes"),
           time.ctime(self.nextRun))
+
+  def backoff(self):
+    now = time.time()
+    if not self.stateExists:
+      logging.info("No existing state, execute command")
+      return
+    if self.lastDelay == 0:
+      logging.info("Not in backoff, execute command")
+      return
+    if self.nextRun > now:
+      logging.info("Still in backoff for another %s, skipping execution.", formatTime(self.nextRun - now))
+      cleanupExit(0)
+    logging.info("No longer in backoff, execute command")
 
 
 if __name__ == '__main__':

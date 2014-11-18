@@ -243,3 +243,19 @@ class TestStateRead(StateWrapper):
     with self.assertRaises(CleanupExitException):
       self.state.read()
     os.unlink(self.state.filePath)
+
+class TestStateBackoff(StateWrapper):
+  def test_no_state(self):
+    self.assertIsNone(self.state.backoff())
+
+  def test_no_delay(self):
+    self.state.lastDelay = 0
+    self.assertIsNone(self.state.backoff())
+
+  def test_in_backoff(self):
+    self.state.nextRun = time.time() + 10
+    self.state.backoff()
+
+  def test_out_of_backoff(self):
+    self.state.nextRun = time.time() - 10
+    self.state.backoff()
