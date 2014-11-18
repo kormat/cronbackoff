@@ -71,6 +71,43 @@ class TestParseArgs(CleanupExitMocker):
     self.assertEqual(opts.name, name)
     self.assertEqual(opts.command, [command])
 
+class TestFormatTime(unittest.TestCase):
+  def test_zero(self):
+    self.assertEqual(cronbackoff.formatTime(0), "0s")
+
+  def test_1s(self):
+    self.assertEqual(cronbackoff.formatTime(1), "1s")
+
+  def test_1m(self):
+    self.assertEqual(cronbackoff.formatTime(60), "1m")
+
+  def test_1h(self):
+    self.assertEqual(cronbackoff.formatTime(3600), "1h")
+
+  def test_mins_seconds(self):
+    self.assertEqual(cronbackoff.formatTime(82), "1m 22s")
+
+  def test_hours_mins_seconds(self):
+    self.assertEqual(cronbackoff.formatTime(3782), "1h 3m 2s")
+
+  def test_precision_seconds(self):
+    self.assertEqual(cronbackoff.formatTime(10799, precision="seconds"), "2h 59m 59s")
+
+  def test_precision_minutes(self):
+    self.assertEqual(cronbackoff.formatTime(10799, precision="minutes"), "2h 59m")
+
+  def test_precision_hours(self):
+    self.assertEqual(cronbackoff.formatTime(10799, precision="hours"), "2h")
+
+  def test_precision_seconds_zero(self):
+    self.assertEqual(cronbackoff.formatTime(0, precision="seconds"), "0s")
+
+  def test_precision_minutes_zero(self):
+    self.assertEqual(cronbackoff.formatTime(0, precision="minutes"), "0m")
+
+  def test_precision_hours_zero(self):
+    self.assertEqual(cronbackoff.formatTime(0, precision="hours"), "0h")
+
 class StateWrapper(CleanupExitMocker):
   def setUp(self):
     super(StateWrapper, self).setUp()
