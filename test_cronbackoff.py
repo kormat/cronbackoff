@@ -124,60 +124,56 @@ class TestStateMkStateDir(StateWrapper):
 
 class TestStateGetLock(StateWrapper):
   def test_state(self):
-    f = open(self.state.file, 'w')
+    f = open(self.state.filePath, 'w')
     f.close()
-    cronbackoff.getLock(self.tempDir, name)
-    self.assertTrue(cronbackoff.stateExists)
-    os.unlink(stateFile)
+    self.state.getLock()
+    self.assertTrue(self.state.stateExists)
+    self.state.file.close()
+    os.unlink(self.state.filePath)
 
   def test_no_state(self):
-    name = self.id()
-    stateFile = os.path.join(self.tempDir, name)
-    cronbackoff.getLock(self.tempDir, name)
-    self.assertFalse(cronbackoff.stateExists)
-    self.assertTrue(os.path.isfile(stateFile))
-    os.unlink(stateFile)
+    self.state.getLock()
+    self.assertFalse(self.state.stateExists)
+    self.assertTrue(os.path.isfile(self.state.filePath))
+    self.state.file.close()
+    os.unlink(self.state.filePath)
 
   def test_no_state_dir(self):
-    stateDir = os.path.join(self.tempDir, "noexisty")
+    self.state.dir = os.path.join(self.tempDir, "noexisty")
+    self.state.filePath = os.path.join(self.state.dir, self.state.name)
     with self.assertRaises(CleanupExitException):
-      cronbackoff.getLock(stateDir, self.id())
+      self.state.getLock()
 
   def test_no_dir_read_perms(self):
     # Technically, dir doesn't have the execute bit set :P
     os.chmod(self.tempDir, 0o600)
     with self.assertRaises(CleanupExitException):
-      cronbackoff.getLock(self.tempDir, self.id())
+      self.state.getLock()
 
   def test_no_dir_write_perms(self):
     os.chmod(self.tempDir, 0o500)
     with self.assertRaises(CleanupExitException):
-      cronbackoff.getLock(self.tempDir, self.id())
+      self.state.getLock()
 
   def test_no_file_read_perms(self):
-    name = self.id()
-    stateFile = os.path.join(self.tempDir, name)
-    f = open(stateFile, 'w')
+    f = open(self.state.filePath, 'w')
     os.fchmod(f.fileno(), 0o200)
     f.close()
     with self.assertRaises(CleanupExitException):
-      cronbackoff.getLock(self.tempDir, name)
-    os.unlink(stateFile)
+      self.state.getLock()
+    os.unlink(self.state.filePath)
 
   def test_no_file_write_perms(self):
-    name = self.id()
-    stateFile = os.path.join(self.tempDir, name)
-    f = open(stateFile, 'w')
+    f = open(self.state.filePath, 'w')
     os.fchmod(f.fileno(), 0o400)
     f.close()
     with self.assertRaises(CleanupExitException):
-      cronbackoff.getLock(self.tempDir, name)
-    os.unlink(stateFile)
+      self.state.getLock()
+    os.unlink(self.state.filePath)
 
   def test_file_locked(self):
-    name = self.id()
-    stateFile = os.path.join(self.tempDir, name)
-    cronbackoff.getLock(self.tempDir, name)
+    self.state.getLock()
+    newstate = cronbackoff.State(self.tempDir, self.name)
     with self.assertRaises(CleanupExitException):
-      cronbackoff.getLock(self.tempDir, name)
-    os.unlink(stateFile)
+      newstate.getLock()
+    os.unlink(self.state.filePath)
