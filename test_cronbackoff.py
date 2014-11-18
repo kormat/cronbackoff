@@ -12,45 +12,10 @@ import unittest
 
 import cronbackoff
 
-class TestParseArgs(unittest.TestCase):
-  def test_basic(self):
-    prog = "wefa"
-    base_delay = 10
-    max_delay = 10000
-    exponent = 22.1222332312
-    name = "asdf"
-    command = ["as23d", "1", "4", "hi", "-h"]
-    args = [
-        prog,
-        "-b", str(base_delay),
-        "--max-delay", str(max_delay),
-        "-e", str(exponent),
-        "--debug",
-        "--name", name,
-        "--",
-        ] + command
-    opts = cronbackoff.parseArgs(args)
 
-    self.assertEqual(opts.base_delay, base_delay)
-    self.assertEqual(opts.max_delay, max_delay)
-    self.assertAlmostEqual(opts.exponent, exponent)
-    self.assertEqual(opts.debug, True)
-    self.assertEqual(opts.name, name)
-    self.assertEqual(opts.command, command)
+class CleanupExitException(Exception):
+  pass
 
-  def test_defaults(self):
-    prog = "nosetests"
-    name = "hurkle"
-    command = "/usr/bin/%s" % name
-    opts = cronbackoff.parseArgs(
-        [prog, command])
-
-    self.assertEqual(opts.base_delay, 60)
-    self.assertEqual(opts.max_delay, 1440)
-    self.assertAlmostEqual(opts.exponent, 4)
-    self.assertEqual(opts.debug, False)
-    self.assertEqual(opts.name, name)
-    self.assertEqual(opts.command, [command])
 
 class CleanupExitMocker(unittest.TestCase):
   def setUp(self):
@@ -64,18 +29,59 @@ class CleanupExitMocker(unittest.TestCase):
     if state != 0:
       raise CleanupExitException
 
-class CleanupExitException(Exception):
-  pass
+
+class TestParseArgs(CleanupExitMocker):
+  def test_basic(self):
+    prog = "nosetests"
+    base_delay = 10
+    max_delay = 10000
+    exponent = 22.1222332312
+    name = self.id()
+    command = ["as23d", "1", "4", "hi", "-h"]
+    args = [
+        prog,
+        "-b", str(base_delay),
+        "--max-delay", str(max_delay),
+        "-e", str(exponent),
+        "--debug",
+        "--name", name,
+        "--",
+        ] + command
+    opts = cronbackoff.parseArgs(args)
+
+    # CleanupExitException not raised, good start.
+    self.assertEqual(opts.base_delay, base_delay)
+    self.assertEqual(opts.max_delay, max_delay)
+    self.assertAlmostEqual(opts.exponent, exponent)
+    self.assertEqual(opts.debug, True)
+    self.assertEqual(opts.name, name)
+    self.assertEqual(opts.command, command)
+
+  def test_defaults(self):
+    prog = "nosetests"
+    name = self.id()
+    command = "/usr/bin/%s" % name
+    opts = cronbackoff.parseArgs(
+        [prog, command])
+
+    # CleanupExitException not raised, good start.
+    self.assertEqual(opts.base_delay, 60)
+    self.assertEqual(opts.max_delay, 1440)
+    self.assertAlmostEqual(opts.exponent, 4)
+    self.assertEqual(opts.debug, False)
+    self.assertEqual(opts.name, name)
+    self.assertEqual(opts.command, [command])
+
 
 class TestMkStateDir(CleanupExitMocker):
   def test_dir_exists(self):
-    tempDir = tempfile.mkdtemp(prefix="test_cronbackoff.")
+    tempDir = tempfile.mkdtemp(prefix=self.id())
     cronbackoff.mkStateDir(tempDir)
     # CleanupExitException wasn't raised, all is good.
     os.rmdir(tempDir)
 
   def test_new_dir(self):
-    tempDir = tempfile.mkdtemp(prefix="test_cronbackoff.")
+    tempDir = tempfile.mkdtemp(prefix=self.id())
     stateDir = os.path.join(tempDir, "subdir")
     cronbackoff.mkStateDir(stateDir)
     self.assertTrue(os.path.isdir(stateDir))
@@ -93,7 +99,7 @@ class TestMkStateDir(CleanupExitMocker):
       cronbackoff.mkStateDir("/etc/fstab")
 
   def test_symlink(self):
-    tempDir = tempfile.mkdtemp(prefix="test_cronbackoff.")
+    tempDir = tempfile.mkdtemp(prefix=self.id())
     stateDir = os.path.join(tempDir, "sym")
     os.symlink(".", stateDir)
     with self.assertRaises(CleanupExitException):
@@ -104,7 +110,7 @@ class TestMkStateDir(CleanupExitMocker):
 class TestGetLock(CleanupExitMocker):
   def setUp(self):
     super(TestGetLock, self).setUp()
-    self.tempDir = tempfile.mkdtemp(prefix="test_cronbackoff.")
+    self.tempDir = tempfile.mkdtemp(prefix=self.id())
 
   def tearDown(self):
     super(TestGetLock, self).tearDown()
@@ -112,7 +118,7 @@ class TestGetLock(CleanupExitMocker):
     del self.tempDir
 
   def test_no_state(self):
-    name = "wqeasdfwe"
+    name = self.id()
     stateFile = os.path.join(self.tempDir, name)
     cronbackoff.getLock(self.tempDir, name)
     self.assertTrue(os.path.isfile(stateFile))
@@ -121,18 +127,34 @@ class TestGetLock(CleanupExitMocker):
   def test_no_state_dir(self):
     stateDir = os.path.join(self.tempDir, "noexisty")
     with self.assertRaises(CleanupExitException):
-      cronbackoff.getLock(stateDir, "qwerasdf234w")
+      cronbackoff.getLock(stateDir, self.id())
 
-  def test_no_dir_perms(self):
-    os.chmod(self.tempDir, 0o000)
+  def test_no_dir_read_perms(self):
+    # Technically, dir doesn't have the execute bit set :P
+    os.chmod(self.tempDir, 0o600)
     with self.assertRaises(CleanupExitException):
-      cronbackoff.getLock(self.tempDir, "asdwasdfas")
+      cronbackoff.getLock(self.tempDir, self.id())
 
-  def test_no_file_perms(self):
-    name = "wva8a3j"
+  def test_no_dir_write_perms(self):
+    os.chmod(self.tempDir, 0o500)
+    with self.assertRaises(CleanupExitException):
+      cronbackoff.getLock(self.tempDir, self.id())
+
+  def test_no_file_read_perms(self):
+    name = self.id()
     stateFile = os.path.join(self.tempDir, name)
     f = open(stateFile, 'w')
-    os.fchmod(f.fileno(), 0o00)
+    os.fchmod(f.fileno(), 0o200)
+    f.close()
+    with self.assertRaises(CleanupExitException):
+      cronbackoff.getLock(self.tempDir, name)
+    os.unlink(stateFile)
+
+  def test_no_file_write_perms(self):
+    name = self.id()
+    stateFile = os.path.join(self.tempDir, name)
+    f = open(stateFile, 'w')
+    os.fchmod(f.fileno(), 0o400)
     f.close()
     with self.assertRaises(CleanupExitException):
       cronbackoff.getLock(self.tempDir, name)
