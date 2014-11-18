@@ -176,7 +176,7 @@ class State(object):
     logging.debug("Opening state file (%s)", self.filePath)
 
     try:
-      self.file = open(self.filePath, 'r')
+      self.file = open(self.filePath, 'r+')
     except IOError as e:
       if e.errno == errno.ENOENT:
         self.stateExists = False
