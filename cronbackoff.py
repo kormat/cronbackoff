@@ -26,7 +26,7 @@ def main():
   state = State(opts.state_dir, opts.name)
   state.mkStateDir()
   state.getLock()
-  readState()
+  state.read()
   backoff()
   success = execute(opts.command)
   saveState(success, opts)
@@ -78,35 +78,6 @@ def parseArgs(args):
 
   return opts
 
-
-def readState():
-  global lastRun, lastDelay, nextRun
-
-  if not stateExists:
-    logging.info("No existing state")
-    return
-
-  logging.debug("Stat'ing state file")
-  st = os.fstat(stateFile.fileno())
-  lastRun = st.st_mtime
-  logging.info("Last run finished: %s (%s ago)",
-      time.ctime(lastRun), formatTime(time.time() - lastRun))
-
-  contents = stateFile.read()
-  logging.debug("State file contents: %r", contents)
-
-  try:
-    lastDelay = int(contents)
-  except ValueError:
-    logging.critical("Corrupt state file - %r is not a valid integer", contents)
-    cleanupExit(1)
-  nextRun = lastRun + (lastDelay * 60)
-  if lastDelay == 0:
-    logging.info("No previous backoff")
-  else:
-    logging.info("Last backoff (%s) was until %s",
-        formatTime(lastDelay * 60, precision="minutes"),
-        time.ctime(nextRun))
 
 def formatTime(seconds, precision="seconds"):
   out = []
@@ -212,6 +183,10 @@ class State(object):
     self.file = None
     self.stateExists = True
 
+    self.lastRun = None
+    self.lastDelay = None
+    self.nextRun = None
+
   def mkStateDir(self):
     try:
       os.mkdir(self.dir, 0700)
@@ -271,6 +246,33 @@ class State(object):
         logging.critical("Unable to lock state file (%s): %s", self.filePath, e.strerror)
       cleanupExit(1)
     logging.debug("State file opened & locked")
+
+  def read(self):
+    if not self.stateExists:
+      logging.info("No existing state")
+      return
+
+    logging.debug("Stat'ing state file")
+    st = os.fstat(self.file.fileno())
+    self.lastRun = st.st_mtime
+    logging.info("Last run finished: %s (%s ago)",
+        time.ctime(self.lastRun), formatTime(time.time() - self.lastRun))
+
+    contents = self.file.read()
+    logging.debug("State file contents: %r", contents)
+
+    try:
+      self.lastDelay = int(contents)
+    except ValueError:
+      logging.critical("Corrupt state file - %r is not a valid integer", contents)
+      cleanupExit(1)
+    self.nextRun = self.lastRun + (self.lastDelay * 60)
+    if self.lastDelay == 0:
+      logging.info("No previous backoff")
+    else:
+      logging.info("Last backoff (%s) was until %s",
+          formatTime(self.lastDelay * 60, precision="minutes"),
+          time.ctime(self.nextRun))
 
 
 if __name__ == '__main__':

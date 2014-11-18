@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 import tempfile
+import time
 import unittest
 
 import cronbackoff
@@ -15,7 +16,6 @@ import cronbackoff
 
 class CleanupExitException(Exception):
   pass
-
 
 class CleanupExitMocker(unittest.TestCase):
   def setUp(self):
@@ -28,7 +28,6 @@ class CleanupExitMocker(unittest.TestCase):
   def _mock_cleanupExit(self, state):
     if state != 0:
       raise CleanupExitException
-
 
 class TestParseArgs(CleanupExitMocker):
   def test_basic(self):
@@ -176,4 +175,34 @@ class TestStateGetLock(StateWrapper):
     newstate = cronbackoff.State(self.tempDir, self.name)
     with self.assertRaises(CleanupExitException):
       newstate.getLock()
+    os.unlink(self.state.filePath)
+
+class TestStateRead(StateWrapper):
+  def test_no_state(self):
+    self.state.getLock()
+    self.state.read()
+    # CleanupExitException not raised, good start.
+    self.assertIsNone(self.state.lastRun)
+    os.unlink(self.state.filePath)
+
+  def test_has_state(self):
+    f = open(self.state.filePath, 'w')
+    f.write("12\n")
+    f.close()
+    now = time.time()
+    os.utime(self.state.filePath, (now, now))
+    self.state.getLock()
+    self.state.read()
+    # Using AlmostEqual as FS timestamp precision can cause minor differences
+    self.assertAlmostEqual(self.state.lastRun, now, delta=1)
+    self.assertAlmostEqual(self.state.nextRun, now+12*60, delta=1)
+    self.assertEqual(self.state.lastDelay, 12)
+    os.unlink(self.state.filePath)
+
+  def test_no_state(self):
+    f = open(self.state.filePath, 'w')
+    f.close()
+    self.state.getLock()
+    with self.assertRaises(CleanupExitException):
+      self.state.read()
     os.unlink(self.state.filePath)
