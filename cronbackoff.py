@@ -215,7 +215,7 @@ class State(object):
     st = os.fstat(self.file.fileno())
     self.lastRun = st.st_mtime
     logging.info("Last run finished: %s (%s ago)",
-        time.ctime(self.lastRun), formatTime(time.time() - self.lastRun))
+        time.ctime(self.lastRun), _formatTime(time.time() - self.lastRun))
 
     try:
       contents = self.file.read()
@@ -233,7 +233,7 @@ class State(object):
       logging.info("No previous backoff")
     else:
       logging.info("Last backoff (%s) was until %s",
-          formatTime(self.lastDelay * 60, precision="minutes"),
+          _formatTime(self.lastDelay * 60, precision="minutes"),
           time.ctime(self.nextRun))
 
   def backoff(self):
@@ -247,7 +247,7 @@ class State(object):
       logging.info("Not in backoff, execute command")
     elif self.nextRun > now:
       delay = self.nextRun - now
-      logging.info("Still in backoff for another %s, skipping execution.", formatTime(delay))
+      logging.info("Still in backoff for another %s, skipping execution.", _formatTime(delay))
     else:
       delay = -self.lastDelay
       logging.info("No longer in backoff, execute command")
@@ -276,7 +276,7 @@ class State(object):
     st = os.lstat(self.filePath)
     if nextDelay:
       logging.warning("Execution unclean, backoff delay is %s (until %s)",
-          formatTime(nextDelay * 60), time.ctime(st.st_mtime + nextDelay * 60))
+          _formatTime(nextDelay * 60), time.ctime(st.st_mtime + nextDelay * 60))
 
 
 class CronBackoffException(Exception):
