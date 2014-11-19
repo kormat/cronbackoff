@@ -150,14 +150,14 @@ class StateWrapper(unittest.TestCase):
     del self.name
     del self.state
 
-class TestStateMkStateDir(StateWrapper):
+class TestStateMkDir(StateWrapper):
   def test_dir_exists(self):
-    self.state.mkStateDir()
+    self.state._mkDir()
     # No exceptions raised, all is good.
 
   def test_new_dir(self):
     self.state.dir = os.path.join(self.tempDir, "subdir")
-    self.state.mkStateDir()
+    self.state._mkDir()
     self.assertTrue(os.path.isdir(self.state.dir))
     # No exceptions raised, all is good.
     os.rmdir(self.state.dir)
@@ -166,40 +166,40 @@ class TestStateMkStateDir(StateWrapper):
     self.state.dir = os.path.join(self.tempDir, "subdir")
     os.chmod(self.tempDir, 0o500)
     with self.assertRaises(cronbackoff.CronBackoffException) as ctx:
-      self.state.mkStateDir()
+      self.state._mkDir()
     self.assertEqual(ctx.exception.errno, errno.EACCES)
 
   def test_dir_wrong_owner(self):
     # It's non-trivial to create dir with wrong owner, so just use one that's guaranteed to exist.
     self.state.dir="/"
     with self.assertRaises(cronbackoff.CronBackoffException) as ctx:
-      self.state.mkStateDir()
+      self.state._mkDir()
     self.assertTrue("not owned by" in ctx.exception.message)
 
   def test_file(self):
     self.state.dir="/etc/fstab"
     with self.assertRaises(cronbackoff.CronBackoffException) as ctx:
-      self.state.mkStateDir()
+      self.state._mkDir()
     self.assertTrue("not a dir" in ctx.exception.message)
 
   def test_symlink(self):
     self.state.dir = os.path.join(self.tempDir, "sym")
     os.symlink(".", self.state.dir)
     with self.assertRaises(cronbackoff.CronBackoffException) as ctx:
-      self.state.mkStateDir()
+      self.state._mkDir()
     self.assertTrue("symlink" in ctx.exception.message)
     os.unlink(self.state.dir)
 
-class TestStateGetLock(StateWrapper):
+class TestStateLock(StateWrapper):
   def test_state(self):
     open(self.state.filePath, 'w').close()
-    self.state.getLock()
+    self.state._lock()
     self.assertTrue(self.state.stateExists)
     self.state.file.close()
     os.unlink(self.state.filePath)
 
   def test_no_state(self):
-    self.state.getLock()
+    self.state._lock()
     self.assertFalse(self.state.stateExists)
     self.assertTrue(os.path.isfile(self.state.filePath))
     self.state.file.close()
@@ -209,7 +209,7 @@ class TestStateGetLock(StateWrapper):
     self.state.dir = os.path.join(self.tempDir, "noexisty")
     self.state.filePath = os.path.join(self.state.dir, self.state.name)
     with self.assertRaises(cronbackoff.CronBackoffException) as ctx:
-      self.state.getLock()
+      self.state._lock()
     # Actually comes from trying to create a new state file:
     self.assertEqual(ctx.exception.errno, errno.ENOENT)
 
@@ -217,20 +217,20 @@ class TestStateGetLock(StateWrapper):
     # Technically, dir doesn't have the execute bit set :P
     os.chmod(self.tempDir, 0o600)
     with self.assertRaises(cronbackoff.CronBackoffException) as ctx:
-      self.state.getLock()
+      self.state._lock()
     self.assertEqual(ctx.exception.errno, errno.EACCES)
 
   def test_no_dir_write_perms(self):
     os.chmod(self.tempDir, 0o500)
     with self.assertRaises(cronbackoff.CronBackoffException) as ctx:
-      self.state.getLock()
+      self.state._lock()
     self.assertEqual(ctx.exception.errno, errno.EACCES)
 
   def test_no_file_read_perms(self):
     with open(self.state.filePath, 'w') as f:
       os.fchmod(f.fileno(), 0o200)
     with self.assertRaises(cronbackoff.CronBackoffException) as ctx:
-      self.state.getLock()
+      self.state._lock()
     self.assertEqual(ctx.exception.errno, errno.EACCES)
     os.unlink(self.state.filePath)
 
@@ -238,22 +238,22 @@ class TestStateGetLock(StateWrapper):
     with open(self.state.filePath, 'w') as f:
       os.fchmod(f.fileno(), 0o400)
     with self.assertRaises(cronbackoff.CronBackoffException) as ctx:
-      self.state.getLock()
+      self.state._lock()
     self.assertEqual(ctx.exception.errno, errno.EACCES)
     os.unlink(self.state.filePath)
 
   def test_file_locked(self):
-    self.state.getLock()
+    self.state._lock()
     newstate = cronbackoff.State(self.tempDir, self.name)
     with self.assertRaises(cronbackoff.CronBackoffException) as ctx:
-      newstate.getLock()
+      newstate._lock()
     self.assertEqual(ctx.exception.errno, errno.EAGAIN)
     os.unlink(self.state.filePath)
 
 class TestStateRead(StateWrapper):
   def test_no_state(self):
-    self.state.getLock()
-    self.state.read()
+    self.state._lock()
+    self.state._read()
     # No exceptions raised, good start.
     self.assertIsNone(self.state.lastRun)
     os.unlink(self.state.filePath)
@@ -263,8 +263,8 @@ class TestStateRead(StateWrapper):
       f.write("12\n")
     now = time.time()
     os.utime(self.state.filePath, (now, now))
-    self.state.getLock()
-    self.state.read()
+    self.state._lock()
+    self.state._read()
     # Using AlmostEqual as FS timestamp precision can cause minor differences
     self.assertAlmostEqual(self.state.lastRun, now, delta=1)
     self.assertAlmostEqual(self.state.nextRun, now+12*60, delta=1)
@@ -276,8 +276,8 @@ class TestStateRead(StateWrapper):
       f.write("0\n")
     now = time.time()
     os.utime(self.state.filePath, (now, now))
-    self.state.getLock()
-    self.state.read()
+    self.state._lock()
+    self.state._read()
     # Using AlmostEqual as FS timestamp precision can cause minor differences
     self.assertAlmostEqual(self.state.lastRun, now, delta=1)
     self.assertAlmostEqual(self.state.nextRun, now, delta=1)
@@ -286,51 +286,51 @@ class TestStateRead(StateWrapper):
 
   def test_empty_state(self):
     open(self.state.filePath, 'w').close()
-    self.state.getLock()
+    self.state._lock()
     with self.assertRaises(cronbackoff.CronBackoffException) as ctx:
-      self.state.read()
+      self.state._read()
     self.assertTrue("not a valid" in ctx.exception.message)
     os.unlink(self.state.filePath)
 
   def test_invalid_state(self):
     with open(self.state.filePath, 'w') as f:
       f.write("Hello, world")
-    self.state.getLock()
+    self.state._lock()
     with self.assertRaises(cronbackoff.CronBackoffException) as ctx:
-      self.state.read()
+      self.state._read()
     self.assertTrue("not a valid" in ctx.exception.message)
     os.unlink(self.state.filePath)
 
   def test_read_error(self):
     with open(self.state.filePath, 'w') as self.state.file:
       with self.assertRaises(cronbackoff.CronBackoffException) as ctx:
-        self.state.read()
+        self.state._read()
     self.assertTrue("not open for" in ctx.exception.message)
     os.unlink(self.state.filePath)
 
 class TestStateBackoff(StateWrapper):
   def test_no_state(self):
     self.state.stateExists = False
-    self.assertIsNone(self.state.backoff())
+    self.assertIsNone(self.state._backoff())
 
   def test_no_delay(self):
     self.state.lastDelay = 0
-    self.assertEqual(self.state.backoff(), 0)
+    self.assertEqual(self.state._backoff(), 0)
 
   def test_in_backoff(self):
     self.state.nextRun = time.time() + 10
-    self.assertAlmostEqual(self.state.backoff(), 10, delta=0.1)
+    self.assertAlmostEqual(self.state._backoff(), 10, delta=0.1)
 
   def test_out_of_backoff(self):
     self.state.lastDelay = 45
     self.state.nextRun = time.time() - 10
-    self.state.backoff()
+    self.state._backoff()
 
 class TestStateSave(StateWrapper):
   def setUp(self):
     super(TestStateSave, self).setUp()
-    self.state.getLock()
-    self.state.read()
+    self.state._lock()
+    self.state._read()
 
   def tearDown(self):
     os.unlink(self.state.filePath)

@@ -152,12 +152,12 @@ class State(object):
     self.nextRun = None
 
   def setup(self):
-    self.mkStateDir()
-    self.getLock()
-    self.read()
-    return self.backoff()
+    self._mkDir()
+    self._lock()
+    self._read()
+    return self._backoff()
 
-  def mkStateDir(self):
+  def _mkDir(self):
     logging.debug("Creating state dir (%s)", self.dir)
 
     try:
@@ -183,7 +183,7 @@ class State(object):
     if errs:
       raise CronBackoffException("State dir (%s) is: %s" % (self.dir, ", ".join(errs)))
 
-  def getLock(self):
+  def _lock(self):
     logging.debug("Opening state file (%s)", self.filePath)
 
     try:
@@ -211,7 +211,7 @@ class State(object):
       raise CronBackoffException("Unable to lock state file (%s): %s" % (self.filePath, e), excep=e)
     logging.debug("State file opened & locked")
 
-  def read(self):
+  def _read(self):
     if not self.stateExists:
       logging.info("No existing state")
       return
@@ -241,7 +241,7 @@ class State(object):
           _formatTime(self.lastDelay * 60, precision="minutes"),
           time.ctime(self.nextRun))
 
-  def backoff(self):
+  def _backoff(self):
     delay = None
     now = time.time()
     if not self.stateExists:
