@@ -28,8 +28,11 @@ def main():
     success = execute(opts.command)
     state.save(success, opts.base_delay, opts.max_delay, opts.exponent)
   except CronBackoffException as e:
-    logging.critical(e)
-    logging.critical("Exiting (%d)", e.status)
+    if e.status == 0 :
+      logging.debug("Exiting (%d)", e.status)
+    else:
+      logging.critical(e.message)
+      logging.critical("Exiting (%d)", e.status)
     sys.exit(e.status)
   except KeyboardInterrupt as e:
     logging.error("Caught keyboard interruption")
@@ -126,8 +129,9 @@ def execute(command):
       logging.info("    %s", line)
     success = False
   except OSError as e:
-    logging.critical("Error running command %r: %s", command, e)
-    cleanupExit(1)
+    raise CronBackoffException(
+        "Error running command %r: %s" % (command, e),
+        excep=e)
   else:
     logging.info("Command exited cleanly")
     logging.debug("Command output:")
@@ -135,21 +139,6 @@ def execute(command):
       logging.debug("    %s", line)
 
   return success
-
-def cleanupExit(status):
-  #if not state.stateExists and state.file:
-  #  # If there wasn't an existing state file, and it hasn't been closed already,
-  #  # that means we've created an empty one, so unlink it.
-  #  os.unlink(stateFile.name)
-  #  fcntl.lockf(stateFile.fileno(), fcntl.LOCK_UN)
-  #  stateFile.close()
-
-  if status == 0:
-    logging.debug("Exiting (%d)", status)
-  else:
-    logging.critical("Exiting (%d)", status)
-
-  sys.exit(status)
 
 
 class State(object):
@@ -173,8 +162,7 @@ class State(object):
       if e.errno == errno.EEXIST:
         logging.debug("State dir already exists")
       else:
-        logging.critical("Unable to make state dir: %s", e)
-        cleanupExit(1)
+        raise CronBackoffException("Unable to make state dir: %s" % e, excep=e)
     else:
       logging.debug("State dir (%s) created", self.dir)
 
@@ -189,8 +177,7 @@ class State(object):
     if st.st_gid != os.getgid():
       errs.append("not owned by current group")
     if errs:
-      logging.critical("State dir (%s) is: %s", self.dir, ", ".join(errs))
-      cleanupExit(1)
+      raise CronBackoffException("State dir (%s) is: %s" % (self.dir, ", ".join(errs)))
 
   def getLock(self):
     logging.debug("Opening state file (%s)", self.filePath)
@@ -202,8 +189,7 @@ class State(object):
         self.stateExists = False
         logging.debug("State file doesn't exist")
       else:
-        logging.critical("Unable to open state file: %s", e)
-        cleanupExit(1)
+        raise CronBackoffException("Unable to open state file: %s" % e, excep=e)
     else:
       logging.debug("State file already exists")
 
@@ -212,15 +198,13 @@ class State(object):
       try:
         self.file = open(self.filePath, 'w+')
       except IOError as e:
-        logging.critical("Unable to create state file: %s", e)
-        cleanupExit(1)
+        raise CronBackoffException("Unable to create state file: %s" % e, excep=e)
 
     logging.debug("Locking state file")
     try:
       fcntl.flock(self.file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except IOError as e:
-      logging.critical("Unable to lock state file (%s): %s", self.filePath, e)
-      cleanupExit(1)
+      raise CronBackoffException("Unable to lock state file (%s): %s" % (self.filePath, e), excep=e)
     logging.debug("State file opened & locked")
 
   def read(self):
@@ -237,15 +221,14 @@ class State(object):
     try:
       contents = self.file.read()
     except IOError as e:
-      logging.critical("Unable to read state file: %s", e)
-      cleanupExit(1)
+      raise CronBackoffException("Unable to read state file: %s" % e, excep=e)
     logging.debug("State file contents: %r", contents)
 
     try:
       self.lastDelay = int(contents)
-    except ValueError:
-      logging.critical("Corrupt state file - not a valid integer: %r", contents)
-      cleanupExit(1)
+    except ValueError as e:
+      raise CronBackoffException("Corrupt state file - not a valid integer: %r" % contents,
+          excep=e)
     self.nextRun = self.lastRun + (self.lastDelay * 60)
     if self.lastDelay == 0:
       logging.info("No previous backoff")
@@ -264,7 +247,7 @@ class State(object):
       return
     if self.nextRun > now:
       logging.info("Still in backoff for another %s, skipping execution.", formatTime(self.nextRun - now))
-      cleanupExit(0)
+      raise CronBackoffException("Clean exit", status=0)
     logging.info("No longer in backoff, execute command")
 
   def save(self, success, base_delay, max_delay, exponent):
@@ -285,8 +268,7 @@ class State(object):
       self.file.close()
       self.file = None
     except IOError as e:
-      logging.critical("Unable to write state file: %s", e)
-      cleanupExit(1)
+      raise CronBackoffException("Unable to write state file: %s" % e, excep=e)
 
     st = os.lstat(self.filePath)
     if nextDelay:
@@ -295,15 +277,17 @@ class State(object):
 
 
 class CronBackoffException(Exception):
-  def __init__(self, excep=None, msg=None, status=1):
+  def __init__(self, message, excep=None, status=1):
     self.excep = excep
     self.errno = None
     self.status = status
-    baseArg = msg
+    baseArg = message
 
     if self.excep is not None:
-      baseArg = str(self.excep)
       self.errno = getattr(self.excep, 'errno', None)
+
+      if message is None:
+        baseArg = str(self.excep)
 
     super(CronBackoffException, self).__init__(baseArg)
 
