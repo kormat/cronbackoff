@@ -17,16 +17,34 @@ state = None
 
 def main():
   global state
-  setupLogging()
-  opts = parseArgs(sys.argv)
-  state = State(opts.state_dir, opts.name)
-  state.mkStateDir()
-  state.getLock()
-  state.read()
-  state.backoff()
-  success = execute(opts.command)
-  state.save(success, opts.base_delay, opts.max_delay, opts.exponent)
-  cleanupExit(0)
+  try:
+    setupLogging()
+    opts = parseArgs(sys.argv)
+    state = State(opts.state_dir, opts.name)
+    state.mkStateDir()
+    state.getLock()
+    state.read()
+    state.backoff()
+    success = execute(opts.command)
+    state.save(success, opts.base_delay, opts.max_delay, opts.exponent)
+  except CronBackoffException as e:
+    logging.critical(e)
+    logging.critical("Exiting (%d)", e.status)
+  except KeyboardInterrupt as e:
+    logging.error("Caught keyboard interruption")
+    logging.error("Exiting (1)")
+    sys.exit(1)
+  except:
+    logging.critical("Unexpected error:", exc_info=True)
+    logging.critical("Exiting (1)")
+    sys.exit(1)
+  finally:
+    # If there wasn't an existing state file, and it hasn't been closed already,
+    # that means we've created an empty one, so unlink it.
+    if not state.stateExists and state.file:
+      os.unlink(state.filePath)
+      state.file.close()
+  logging.debug("Exiting (0)")
 
 def setupLogging():
   logging.basicConfig(
@@ -273,6 +291,19 @@ class State(object):
       logging.warning("Execution unclean, backoff delay is %s (until %s)",
           formatTime(nextDelay * 60), time.ctime(st.st_mtime + nextDelay * 60))
 
+
+class CronBackoffException(Exception):
+  def __init__(self, excep=None, msg=None, status=1):
+    self.excep = excep
+    self.errno = None
+    self.status = status
+    baseArg = msg
+
+    if self.excep is not None:
+      baseArg = str(self.excep)
+      self.errno = getattr(self.excep, 'errno', None)
+
+    super(CronBackoffException, self).__init__(baseArg)
 
 if __name__ == '__main__':
   main()
