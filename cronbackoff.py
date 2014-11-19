@@ -12,14 +12,11 @@ import sys
 import time
 import tempfile
 
-user = pwd.getpwuid(os.getuid())[0]
-state = None
-
 def main():
   global state
   try:
-    setupLogging()
-    opts = parseArgs(sys.argv)
+    _setupLogging()
+    opts = _parseArgs(sys.argv)
     state = State(opts.state_dir, opts.name)
     state.mkStateDir()
     state.getLock()
@@ -52,7 +49,7 @@ def main():
   logging.debug("Exiting (0)")
   sys.exit(0)
 
-def setupLogging():
+def _setupLogging():
   logging.basicConfig(
       format='%(asctime)s %(name)s(%(levelname)s): %(message)s',
       datefmt="%Y-%m-%d %H:%M:%S")
@@ -60,10 +57,11 @@ def setupLogging():
 def _getLogger():
   return logging.getLogger()
 
-def parseArgs(args):
+def _parseArgs(args):
   prog = os.path.basename(args[0])
   bareProg = os.path.splitext(prog)[0]
   parser = argparse.ArgumentParser(prog=prog)
+  user = pwd.getpwuid(os.getuid())[0]
 
   parser.add_argument("-b", "--base-delay", default=60, type=int,
       help=("Time (in minutes) to skip execution after the first failure"
@@ -98,7 +96,7 @@ def parseArgs(args):
 
   return opts
 
-def formatTime(seconds, precision="seconds"):
+def _formatTime(seconds, precision="seconds"):
   out = []
   m, s = divmod(seconds, 60)
   h, m = divmod(m, 60)
