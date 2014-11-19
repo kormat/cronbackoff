@@ -97,7 +97,44 @@ class TestFormatTime(unittest.TestCase):
     self.assertEqual(cronbackoff.formatTime(0, precision="hours"), "0h")
 
 class TestExecute(unittest.TestCase):
-  pass #TODO(kormat): write this :P
+  def setUp(self):
+    super(TestExecute, self).setUp()
+    self.tempDir = tempfile.mkdtemp(prefix=self.id())
+
+  def tearDown(self):
+    super(TestExecute, self).tearDown()
+    os.rmdir(self.tempDir)
+    del self.tempDir
+
+  def test_success(self):
+    testScript = os.path.join(self.tempDir, "test")
+    with open(testScript, "w") as f:
+      f.write("#!/bin/bash\n\necho TESTING\nexit 0")
+      os.fchmod(f.fileno(), 0o700)
+    self.assertTrue(cronbackoff.execute([testScript]))
+    os.unlink(testScript)
+
+  def test_failure(self):
+    testScript = os.path.join(self.tempDir, "test")
+    with open(testScript, "w") as f:
+      f.write("#!/bin/bash\n\necho TESTING\nexit 1")
+      os.fchmod(f.fileno(), 0o700)
+    self.assertFalse(cronbackoff.execute([testScript]))
+    os.unlink(testScript)
+
+  def test_not_found(self):
+    testScript = os.path.join(self.tempDir, "test")
+    with self.assertRaises(cronbackoff.CronBackoffException) as ctx:
+      cronbackoff.execute([testScript])
+    self.assertEqual(ctx.exception.errno, errno.ENOENT)
+
+  def test_not_executable(self):
+    testScript = os.path.join(self.tempDir, "test")
+    open(testScript, 'w').close()
+    with self.assertRaises(cronbackoff.CronBackoffException) as ctx:
+      cronbackoff.execute([testScript])
+    self.assertEqual(ctx.exception.errno, errno.EACCES)
+    os.unlink(testScript)
 
 class StateWrapper(unittest.TestCase):
   def setUp(self):
