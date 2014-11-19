@@ -19,7 +19,7 @@ def main():
     opts = _parseArgs(sys.argv)
     state = State(opts.state_dir, opts.name)
     delay = state.setup()
-    if delay and delay <= 0:
+    if not delay:
       success = execute(opts.command)
       state.save(success, opts.base_delay, opts.max_delay, opts.exponent)
   except CronBackoffException as e:
@@ -155,7 +155,11 @@ class State(object):
     self._mkDir()
     self._lock()
     self._read()
-    return self._backoff()
+    ret = self._backoff()
+    if (ret is None) or (ret <= 0):
+      return False
+    else:
+      return True
 
   def _mkDir(self):
     logging.debug("Creating state dir (%s)", self.dir)
