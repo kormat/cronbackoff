@@ -256,7 +256,7 @@ class State(object):
       logging.info("Not in backoff, execute command")
     elif self.nextRun > now:
       delay = self.nextRun - now
-      logging.info("Still in backoff for another %s, skipping execution.", _formatTime(delay))
+      logging.warning("Still in backoff for another %s, skipping execution.", _formatTime(delay))
     else:
       delay = -self.lastDelay
       logging.info("No longer in backoff, execute command")
