@@ -24,9 +24,10 @@ def main():
     state.mkStateDir()
     state.getLock()
     state.read()
-    state.backoff()
-    success = execute(opts.command)
-    state.save(success, opts.base_delay, opts.max_delay, opts.exponent)
+    delay = state.backoff()
+    if delay and delay <= 0:
+      success = execute(opts.command)
+      state.save(success, opts.base_delay, opts.max_delay, opts.exponent)
   except CronBackoffException as e:
     if e.status == 0 :
       logging.debug("Exiting (%d)", e.status)
@@ -238,17 +239,21 @@ class State(object):
           time.ctime(self.nextRun))
 
   def backoff(self):
+    delay = None
     now = time.time()
     if not self.stateExists:
+      delay = None
       logging.info("No existing state, execute command")
-      return
-    if self.lastDelay == 0:
+    elif self.lastDelay == 0:
+      delay = 0
       logging.info("Not in backoff, execute command")
-      return
-    if self.nextRun > now:
-      logging.info("Still in backoff for another %s, skipping execution.", formatTime(self.nextRun - now))
-      raise CronBackoffException("Clean exit", status=0)
-    logging.info("No longer in backoff, execute command")
+    elif self.nextRun > now:
+      delay = self.nextRun - now
+      logging.info("Still in backoff for another %s, skipping execution.", formatTime(delay))
+    else:
+      delay = -self.lastDelay
+      logging.info("No longer in backoff, execute command")
+    return delay
 
   def save(self, success, base_delay, max_delay, exponent):
     if success:

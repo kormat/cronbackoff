@@ -272,21 +272,20 @@ class TestStateRead(StateWrapper):
     os.unlink(self.state.filePath)
 
 class TestStateBackoff(StateWrapper):
-  # TODO(kormat): refactor backoff to be testable.
   def test_no_state(self):
+    self.state.stateExists = False
     self.assertIsNone(self.state.backoff())
 
   def test_no_delay(self):
     self.state.lastDelay = 0
-    self.assertIsNone(self.state.backoff())
+    self.assertEqual(self.state.backoff(), 0)
 
   def test_in_backoff(self):
     self.state.nextRun = time.time() + 10
-    with self.assertRaises(cronbackoff.CronBackoffException) as ctx:
-      self.state.backoff()
-    self.assertEqual(ctx.exception.status, 0)
+    self.assertAlmostEqual(self.state.backoff(), 10, delta=0.1)
 
   def test_out_of_backoff(self):
+    self.state.lastDelay = 45
     self.state.nextRun = time.time() - 10
     self.state.backoff()
 
