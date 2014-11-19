@@ -13,15 +13,12 @@ import time
 import tempfile
 
 def main():
-  global state
+  state = None
   try:
     _setupLogging()
     opts = _parseArgs(sys.argv)
     state = State(opts.state_dir, opts.name)
-    state.mkStateDir()
-    state.getLock()
-    state.read()
-    delay = state.backoff()
+    delay = state.setup()
     if delay and delay <= 0:
       success = execute(opts.command)
       state.save(success, opts.base_delay, opts.max_delay, opts.exponent)
@@ -36,6 +33,8 @@ def main():
     logging.error("Caught keyboard interruption")
     logging.error("Exiting (1)")
     sys.exit(1)
+  except SystemExit as e:
+    pass
   except:
     logging.critical("Unexpected error:", exc_info=True)
     logging.critical("Exiting (1)")
@@ -43,7 +42,7 @@ def main():
   finally:
     # If there wasn't an existing state file, and it hasn't been closed already,
     # that means we've created an empty one, so unlink it.
-    if not state.stateExists and state.file:
+    if state and not state.stateExists and state.file:
       os.unlink(state.filePath)
       state.file.close()
   logging.debug("Exiting (0)")
@@ -151,6 +150,12 @@ class State(object):
     self.lastRun = None
     self.lastDelay = None
     self.nextRun = None
+
+  def setup(self):
+    self.mkStateDir()
+    self.getLock()
+    self.read()
+    return self.backoff()
 
   def mkStateDir(self):
     logging.debug("Creating state dir (%s)", self.dir)
