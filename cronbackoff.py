@@ -291,9 +291,6 @@ class CronBackoffException(Exception):
     if self.excep is not None:
       self.errno = getattr(self.excep, 'errno', None)
 
-      if message is None:
-        baseArg = str(self.excep)
-
     super(CronBackoffException, self).__init__(baseArg)
 
 if __name__ == '__main__':
