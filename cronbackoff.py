@@ -30,6 +30,7 @@ def main():
   except CronBackoffException as e:
     logging.critical(e)
     logging.critical("Exiting (%d)", e.status)
+    sys.exit(e.status)
   except KeyboardInterrupt as e:
     logging.error("Caught keyboard interruption")
     logging.error("Exiting (1)")
@@ -45,6 +46,7 @@ def main():
       os.unlink(state.filePath)
       state.file.close()
   logging.debug("Exiting (0)")
+  sys.exit(0)
 
 def setupLogging():
   logging.basicConfig(
