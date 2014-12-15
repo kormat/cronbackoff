@@ -8,7 +8,8 @@
 # - warnings about function/variable/etc names,
 # - warnings about missing docstrings :P
 # - error when (incorrectly) guessing what type a variable is
-disable=C0103,C0111,E1103
+# - warning about "too many instance attributes" in a class
+disable=C0103,C0111,E1103,R0902
 
 [REPORTS]
 # Include message's id in output
