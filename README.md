@@ -36,6 +36,8 @@ Options
                             Directory to store state in (Default: /tmp
                             /cronbackoff-USERNAME)
 
+**Note**: it's strongly recommended to put a *--* between cronbackoff's own args, and the command that it is supposed to run. This prevents arguments to the command being interpreted by cronbackoff.
+
 Installation
 ------------
 Just copy *cronbackoff.py* to the desired location, and set executable.
@@ -50,6 +52,7 @@ The test suite uses [nose](https://nose.readthedocs.org/) to run the tests. When
     Ran 51 tests in 0.079s
     
     OK
+    $
 
 A pylint config file is supplied, and can be used like this:
 
