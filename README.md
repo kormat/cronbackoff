@@ -6,7 +6,7 @@ Cron wrapper to skip execution after failure, providing exponential backoff.
 Example
 -------
     SHELL=/bin/bash
-    LOG=/tmp/cronbackoff-example.log
+    LOG=/tmp/example.log
     # m h dom mon dow   command
     */5 * * * *   $HOME/bin/cronbackoff.py -b 10 -- /path/to/example/executable -r &> "$LOG" || cat "$LOG"
 
