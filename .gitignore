@@ -1,3 +1,4 @@
-.*.swp
+.*.sw?
 *.pyc
-.coverage
+/.coverage
+/.vscode/
